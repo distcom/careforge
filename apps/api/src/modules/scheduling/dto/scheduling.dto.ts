@@ -57,7 +57,12 @@ export class CreateAppointmentDto {
   @IsString()
   resourceId?: string;
 
-  @ApiProperty({ enum: ['new_patient', 'follow_up', 'procedure', 'telehealth', 'urgent'] })
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  appointmentTypeId?: string;
+
+  @ApiProperty({ enum: ['new_patient', 'follow_up', 'procedure', 'telehealth', 'urgent', 'OFFICE_VISIT'] })
   @IsString()
   type: string;
 
@@ -103,7 +108,7 @@ export class CreateAppointmentDto {
 export class UpdateAppointmentDto extends PartialType(CreateAppointmentDto) {}
 
 export class UpdateStatusDto {
-  @ApiProperty({ enum: ['SCHEDULED', 'CONFIRMED', 'ARRIVED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'NO_SHOW'] })
+  @ApiProperty({ enum: ['SCHEDULED', 'CONFIRMED', 'ARRIVED', 'ROOMED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'NO_SHOW'] })
   @IsString()
   status: string;
 
@@ -111,4 +116,9 @@ export class UpdateStatusDto {
   @IsOptional()
   @IsString()
   reason?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  roomId?: string;
 }

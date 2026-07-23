@@ -45,6 +45,10 @@ model User {
   medications   Medication[]
   postedPayments Payment[]    @relation("PaymentPostedBy")
   patient       Patient?
+  // Scheduling relations
+  providerSchedules ProviderSchedule[]
+  scheduleExceptions ScheduleException[]
+  waitlistEntries WaitlistEntry[]
 
   @@map("users")
 }
@@ -124,6 +128,11 @@ model Facility {
   patients    Patient[]
   appointments Appointment[]
   encounters  Encounter[]
+  // Scheduling relations
+  providerSchedules ProviderSchedule[]
+  scheduleResources ScheduleResource[]
+  scheduleExceptions ScheduleException[]
+  waitlistEntries WaitlistEntry[]
 
   @@map("facilities")
 }
@@ -217,6 +226,7 @@ model Patient {
   payments            Payment[]
   messageThreads      MessageThread[]
   telehealthSessions  TelehealthSession[]
+  waitlistEntries     WaitlistEntry[]
 
   @@index([lastName, firstName])
   @@index([dateOfBirth])
@@ -293,8 +303,10 @@ model Appointment {
   patientId   String    @map("patient_id")
   providerId  String    @map("provider_id")
   facilityId  String?   @map("facility_id")
+  appointmentTypeId String? @map("appointment_type_id")
+  resourceId  String?   @map("resource_id")
   type        String    @default("OFFICE_VISIT")
-  status      String    @default("SCHEDULED")
+  status      String    @default("SCHEDULED") // SCHEDULED, CONFIRMED, ARRIVED, ROOMED, IN_PROGRESS, COMPLETED, CANCELLED, NO_SHOW
   startTime   DateTime  @map("start_time")
   endTime     DateTime  @map("end_time")
   duration    Int       @default(30)
@@ -303,21 +315,32 @@ model Appointment {
   isRecurring Boolean   @default(false) @map("is_recurring")
   recurringId String?   @map("recurring_id")
   roomId      String?   @map("room_id")
+  // Patient flow tracking
+  confirmedAt DateTime? @map("confirmed_at")
   checkedInAt DateTime? @map("checked_in_at")
+  roomedAt    DateTime? @map("roomed_at")
+  providerSeenAt DateTime? @map("provider_seen_at")
+  checkedOutAt DateTime? @map("checked_out_at")
   completedAt DateTime? @map("completed_at")
   cancelledAt DateTime? @map("cancelled_at")
   cancelReason String?  @map("cancel_reason")
+  noShowRecordedAt DateTime? @map("no_show_recorded_at")
+  // Assignment
+  scheduledById String? @map("scheduled_by_id")
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
   patient     Patient   @relation(fields: [patientId], references: [id])
   provider    User      @relation("AppointmentProvider", fields: [providerId], references: [id])
   facility    Facility? @relation(fields: [facilityId], references: [id])
+  appointmentType AppointmentType? @relation(fields: [appointmentTypeId], references: [id])
+  resource    ScheduleResource? @relation(fields: [resourceId], references: [id])
   encounter   Encounter?
 
   @@index([providerId, startTime])
   @@index([patientId])
   @@index([status])
+  @@index([facilityId, startTime])
   @@map("appointments")
 }
 
@@ -325,15 +348,96 @@ model ProviderSchedule {
   id          String   @id @default(uuid())
   providerId  String   @map("provider_id")
   facilityId  String?  @map("facility_id")
-  dayOfWeek   Int      @map("day_of_week")
-  startTime   String   @map("start_time")
-  endTime     String   @map("end_time")
+  dayOfWeek   Int      @map("day_of_week") // 0=Sunday, 6=Saturday
+  startTime   String   @map("start_time")  // "08:00"
+  endTime     String   @map("end_time")    // "17:00"
   slotDuration Int     @default(30) @map("slot_duration")
   isActive    Boolean  @default(true) @map("is_active")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
+  provider    User     @relation(fields: [providerId], references: [id])
+  facility    Facility? @relation(fields: [facilityId], references: [id])
+
+  @@unique([providerId, facilityId, dayOfWeek])
   @@map("provider_schedules")
+}
+
+model AppointmentType {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  code        String   @unique
+  description String?
+  defaultDuration Int  @default(30) @map("default_duration")
+  color       String   @default("#3B82F6")
+  requiresProvider Boolean @default(true) @map("requires_provider")
+  requiresRoom Boolean @default(false) @map("requires_room")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  appointments Appointment[]
+
+  @@map("appointment_types")
+}
+
+model ScheduleResource {
+  id          String   @id @default(uuid())
+  facilityId  String   @map("facility_id")
+  name        String
+  type        String   // ROOM, EQUIPMENT, etc.
+  capacity    Int      @default(1)
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  facility    Facility @relation(fields: [facilityId], references: [id])
+  appointments Appointment[]
+
+  @@map("schedule_resources")
+}
+
+model ScheduleException {
+  id          String   @id @default(uuid())
+  providerId  String?  @map("provider_id")
+  facilityId  String?  @map("facility_id")
+  resourceId  String?  @map("resource_id")
+  date        DateTime
+  startTime   String?  @map("start_time") // null = all day
+  endTime     String?  @map("end_time")
+  reason      String?
+  type        String   @default("TIME_OFF") // TIME_OFF, HOLIDAY, MAINTENANCE
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  provider    User?    @relation(fields: [providerId], references: [id])
+  facility    Facility? @relation(fields: [facilityId], references: [id])
+
+  @@map("schedule_exceptions")
+}
+
+model WaitlistEntry {
+  id          String   @id @default(uuid())
+  patientId   String   @map("patient_id")
+  providerId  String?  @map("provider_id")
+  facilityId  String?  @map("facility_id")
+  appointmentTypeId String? @map("appointment_type_id")
+  reason      String?
+  priority    Int      @default(0)
+  preferredDays String? @map("preferred_days") // JSON array of day numbers
+  preferredTimeOfDay String? @map("preferred_time_of_day") // MORNING, AFTERNOON, ANY
+  status      String   @default("WAITING") // WAITING, SCHEDULED, EXPIRED, CANCELLED
+  addedById   String?  @map("added_by_id")
+  scheduledAppointmentId String? @map("scheduled_appointment_id")
+  expiresAt   DateTime? @map("expires_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  patient     Patient  @relation(fields: [patientId], references: [id])
+  provider    User?    @relation(fields: [providerId], references: [id])
+  facility    Facility? @relation(fields: [facilityId], references: [id])
+  appointmentType AppointmentType? @relation(fields: [appointmentTypeId], references: [id])
+
+  @@map("waitlist_entries")
 }
 
 // ============================================
