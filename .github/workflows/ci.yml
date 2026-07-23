@@ -1,0 +1,336 @@
+name: CareForge CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '20'
+  POSTGRES_VERSION: '16'
+
+jobs:
+  # 1. Dependency installation using committed lockfile
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - name: Install dependencies (frozen lockfile)
+        run: npm ci
+
+  # 2. License-policy validation
+  license-check:
+    needs: install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - run: npm ci
+      - name: Check licenses
+        run: npx license-checker --production --failOn "GPL-3.0;AGPL-3.0;SSPL-1.0" --summary
+
+  # 3. Secret scanning
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # 4. Dependency vulnerability scanning
+  dependency-audit:
+    needs: install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - run: npm ci
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
+
+  # 5. Static application security testing
+  sast:
+    needs: install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - run: npm ci
+      - name: Run Semgrep
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/typescript
+            p/owasp-top-ten
+            p/security-audit
+
+  # 6-7. Prisma formatting, validation, and generation
+  prisma:
+    needs: install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - run: npm ci
+      - name: Prisma format check
+        run: npx prisma format --check
+        working-directory: apps/api
+      - name: Prisma validate
+        run: npx prisma validate
+        working-directory: apps/api
+      - name: Prisma generate
+        run: npx prisma generate
+        working-directory: apps/api
+
+  # 8. Migration testing on clean PostgreSQL
+  migration-test:
+    needs: prisma
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:${{ env.POSTGRES_VERSION }}
+        env:
+          POSTGRES_USER: careforge
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: careforge_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - run: npm ci
+      - name: Run migrations on clean database
+        run: npx prisma migrate deploy
+        working-directory: apps/api
+        env:
+          DATABASE_URL: postgresql://careforge:test_password@localhost:5432/careforge_test
+
+  # 10. Strict TypeScript compilation
+  typecheck:
+    needs: prisma
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - run: npm ci
+      - name: Generate Prisma client
+        run: npx prisma generate
+        working-directory: apps/api
+      - name: TypeScript strict compilation (API)
+        run: npx tsc --noEmit --strict
+        working-directory: apps/api
+      - name: TypeScript strict compilation (Web)
+        run: npx tsc --noEmit
+        working-directory: apps/web
+
+  # 11. Non-mutating lint checks
+  lint:
+    needs: install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - run: npm ci
+      - name: Lint (non-mutating)
+        run: npm run lint -- --no-fix
+
+  # 12-14. Unit, integration, and e2e tests
+  test:
+    needs: [prisma, typecheck]
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:${{ env.POSTGRES_VERSION }}
+        env:
+          POSTGRES_USER: careforge
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: careforge_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - run: npm ci
+      - name: Generate Prisma client
+        run: npx prisma generate
+        working-directory: apps/api
+      - name: Run migrations
+        run: npx prisma migrate deploy
+        working-directory: apps/api
+        env:
+          DATABASE_URL: postgresql://careforge:test_password@localhost:5432/careforge_test
+      - name: Unit tests with coverage
+        run: npm test -- --coverage --coverageReporters=text --coverageReporters=lcov
+        working-directory: apps/api
+        env:
+          DATABASE_URL: postgresql://careforge:test_password@localhost:5432/careforge_test
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: ci-test-secret-not-for-production
+          JWT_REFRESH_SECRET: ci-test-refresh-secret-not-for-production
+      - name: E2E tests
+        run: npm run test:e2e
+        working-directory: apps/api
+        env:
+          DATABASE_URL: postgresql://careforge:test_password@localhost:5432/careforge_test
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: ci-test-secret-not-for-production
+          JWT_REFRESH_SECRET: ci-test-refresh-secret-not-for-production
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: apps/api/coverage/
+
+  # 17. Authorization-matrix tests
+  authz-tests:
+    needs: test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:${{ env.POSTGRES_VERSION }}
+        env:
+          POSTGRES_USER: careforge
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: careforge_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - run: npm ci
+      - name: Generate Prisma client
+        run: npx prisma generate
+        working-directory: apps/api
+      - name: Run migrations
+        run: npx prisma migrate deploy
+        working-directory: apps/api
+        env:
+          DATABASE_URL: postgresql://careforge:test_password@localhost:5432/careforge_test
+      - name: Authorization matrix tests
+        run: npx jest --testPathPattern=authz --coverage
+        working-directory: apps/api
+        env:
+          DATABASE_URL: postgresql://careforge:test_password@localhost:5432/careforge_test
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: ci-test-secret-not-for-production
+          JWT_REFRESH_SECRET: ci-test-refresh-secret-not-for-production
+
+  # 18-19. Container build and vulnerability scan
+  container:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build API container
+        run: docker build -t careforge-api:ci ./apps/api
+      - name: Trivy vulnerability scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: careforge-api:ci
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+
+  # 20. SBOM generation
+  sbom:
+    needs: install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - run: npm ci
+      - name: Generate SBOM (CycloneDX)
+        run: npx @cyclonedx/cyclonedx-npm --output-file sbom.json
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.json
+
+  # Frontend build
+  frontend-build:
+    needs: install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - run: npm ci
+      - name: Build frontend
+        run: npm run build --filter=web
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:4000/api/v1
