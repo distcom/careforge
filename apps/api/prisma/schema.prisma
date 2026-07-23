@@ -43,6 +43,7 @@ model User {
   labOrders     LabOrder[]
   prescriptions Prescription[]
   medications   Medication[]
+  postedPayments Payment[]    @relation("PaymentPostedBy")
   patient       Patient?
 
   @@map("users")
@@ -356,6 +357,7 @@ model Encounter {
   diagnoses       EncounterDiagnosis[]
   procedures      EncounterProcedure[]
   vitalSigns      VitalSign[]
+  charges         Charge[]
 
   @@index([patientId])
   @@index([providerId])
@@ -782,7 +784,8 @@ model Charge {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  patient     Patient  @relation(fields: [patientId], references: [id])
+  patient     Patient    @relation(fields: [patientId], references: [id])
+  encounter   Encounter? @relation(fields: [encounterId], references: [id])
 
   @@index([patientId])
   @@map("charges")
@@ -792,6 +795,8 @@ model Claim {
   id            String   @id @default(uuid())
   patientId     String   @map("patient_id")
   claimNumber   String   @unique @map("claim_number")
+  payerName     String?  @map("payer_name")
+  payerId       String?  @map("payer_id")
   status        String   @default("DRAFT")
   totalAmount   Decimal  @map("total_amount") @db.Decimal(10, 2)
   paidAmount    Decimal  @default(0) @map("paid_amount") @db.Decimal(10, 2)
@@ -812,6 +817,7 @@ model Claim {
 model ClaimItem {
   id          String  @id @default(uuid())
   claimId     String  @map("claim_id")
+  chargeId    String? @map("charge_id")
   cptCode     String  @map("cpt_code")
   description String
   modifiers   String?
@@ -820,6 +826,7 @@ model ClaimItem {
   createdAt   DateTime @default(now()) @map("created_at")
 
   claim       Claim   @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  charge      Charge? @relation(fields: [chargeId], references: [id])
 
   @@map("claim_items")
 }
@@ -834,10 +841,12 @@ model Payment {
   reference   String?
   status      String   @default("COMPLETED")
   notes       String?
+  postedById  String?  @map("posted_by_id")
   paidAt      DateTime @default(now()) @map("paid_at")
   createdAt   DateTime @default(now()) @map("created_at")
 
   patient     Patient  @relation(fields: [patientId], references: [id])
+  postedBy    User?    @relation("PaymentPostedBy", fields: [postedById], references: [id])
 
   @@index([patientId])
   @@map("payments")

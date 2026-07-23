@@ -1,8 +1,10 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../infrastructure/database/prisma.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DOMAIN_EVENTS } from '../../common/events/domain-events';
 import { v4 as uuidv4 } from 'uuid';
+import * as crypto from 'crypto';
 
 export interface TelehealthSessionConfig {
   appointmentId?: string;
@@ -43,6 +45,7 @@ export class TelehealthSessionService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly configService: ConfigService,
   ) {}
 
   /**
@@ -314,18 +317,35 @@ export class TelehealthSessionService {
   /**
    * Get WebRTC configuration (STUN/TURN servers)
    */
+  /**
+   * SECURITY: Generate time-limited TURN credentials using HMAC.
+   * Credentials expire after the configured TTL (default 8 hours).
+   * No hard-coded secrets — uses TURN_SECRET env var.
+   */
   private getRTCConfiguration(): any {
-    return {
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        {
-          urls: 'turn:turn.careforge.io:3478',
-          username: 'careforge',
-          credential: 'turn-secret',
-        },
-      ],
-      iceCandidatePoolSize: 10,
-    };
+    const turnUrl = this.configService.get<string>('TURN_SERVER_URL');
+    const turnSecret = this.configService.get<string>('TURN_SECRET');
+    const stunUrls = this.configService.get<string>('STUN_SERVERS', 'stun:stun.l.google.com:19302');
+
+    const iceServers: any[] = stunUrls.split(',').map((url) => ({ urls: url.trim() }));
+
+    if (turnUrl && turnSecret) {
+      // Generate time-limited credential (HMAC-based, per RFC draft)
+      const ttl = 8 * 3600; // 8 hours
+      const expiry = Math.floor(Date.now() / 1000) + ttl;
+      const username = `${expiry}:careforge-session`;
+      const credential = crypto
+        .createHmac('sha1', turnSecret)
+        .update(username)
+        .digest('base64');
+
+      iceServers.push({
+        urls: turnUrl,
+        username,
+        credential,
+      });
+    }
+
+    return { iceServers, iceCandidatePoolSize: 10 };
   }
 }

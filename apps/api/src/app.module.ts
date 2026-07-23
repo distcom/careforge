@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { PrismaModule } from './infrastructure/database/prisma.module';
 import { RedisModule } from './infrastructure/cache/redis.module';
 import { StorageModule } from './infrastructure/storage/storage.module';
@@ -9,6 +11,7 @@ import { MailModule } from './infrastructure/mail/mail.module';
 import { QueueInfrastructureModule } from './infrastructure/queue/queue-infrastructure.module';
 import { RealtimeModule } from './infrastructure/realtime/realtime.module';
 import { BackupModule } from './infrastructure/backup/backup.module';
+import { GlobalJwtAuthGuard } from './common/guards/global-jwt-auth.guard';
 import { HealthModule } from './modules/health/health.module';
 import { IdentityModule } from './modules/identity/identity.module';
 import { PatientModule } from './modules/patient/patient.module';
@@ -47,6 +50,12 @@ import { FhirModule } from './modules/fhir/fhir.module';
     EventEmitterModule.forRoot(),
     ScheduleModule.forRoot(),
 
+    // SECURITY: Rate limiting (100 requests per 60 seconds per IP)
+    ThrottlerModule.forRoot([{
+      ttl: 60000,
+      limit: 100,
+    }]),
+
     // Infrastructure
     PrismaModule,
     RedisModule,
@@ -84,6 +93,12 @@ import { FhirModule } from './modules/fhir/fhir.module';
     AdminModule,
     TelehealthModule,
     FhirModule,
+  ],
+  providers: [
+    // SECURITY: Deny-by-default — all routes require JWT unless @Public()
+    { provide: APP_GUARD, useClass: GlobalJwtAuthGuard },
+    // SECURITY: Global rate limiting
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })
 export class AppModule {}

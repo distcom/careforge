@@ -43,8 +43,13 @@ export class TelehealthController {
   @Post('sessions/:roomCode/join')
   @ApiOperation({ summary: 'Join a telehealth session by room code' })
   @RequirePermissions('telehealth:write')
-  join(@Param('roomCode') roomCode: string, @CurrentUser() user: AuthenticatedUser, @Body() dto: { role?: string }) {
-    return this.sessionService.joinSession(roomCode, user.id, dto.role || 'provider');
+  join(@Param('roomCode') roomCode: string, @CurrentUser() user: AuthenticatedUser) {
+    // SECURITY: Role is derived server-side from user's actual roles.
+    // Clients cannot select privileged participant roles.
+    const role = user.roles.includes('provider') || user.roles.includes('admin')
+      ? 'provider'
+      : 'patient';
+    return this.sessionService.joinSession(roomCode, user.id, role);
   }
 
   @Post('sessions/:roomCode/admit')

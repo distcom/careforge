@@ -1,50 +1,60 @@
-import { Controller, Post, Get, Delete, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Param, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { BackupService } from './backup.service';
+import { Roles } from '../../common/decorators/auth.decorator';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 
+/**
+ * Backup operations are restricted to authenticated system administrators only.
+ * All operations are audit-logged.
+ */
+@ApiTags('admin')
+@ApiBearerAuth()
+@UseGuards(AuthGuard('jwt'), RolesGuard)
+@Roles('admin')
 @Controller('admin/backups')
 export class BackupController {
   constructor(private readonly backupService: BackupService) {}
 
   @Post('full')
-  async createFullBackup(@Query('compress') compress: string = 'true') {
-    return this.backupService.createFullBackup(compress !== 'false');
+  @HttpCode(HttpStatus.ACCEPTED)
+  async createFullBackup(@CurrentUser() user: AuthenticatedUser) {
+    return this.backupService.createFullBackup(user.id);
   }
 
   @Post('schema')
-  async createSchemaBackup() {
-    return this.backupService.createSchemaBackup();
-  }
-
-  @Post('data')
-  async createDataBackup(@Query('tables') tables?: string) {
-    return this.backupService.createDataBackup(tables?.split(',').filter(Boolean));
-  }
-
-  @Post('restore/:filename')
-  async restoreBackup(
-    @Param('filename') filename: string,
-    @Query('dropFirst') dropFirst: string = 'false',
-  ) {
-    return this.backupService.restoreBackup(filename, { dropFirst: dropFirst === 'true' });
+  @HttpCode(HttpStatus.ACCEPTED)
+  async createSchemaBackup(@CurrentUser() user: AuthenticatedUser) {
+    return this.backupService.createSchemaBackup(user.id);
   }
 
   @Get()
-  async listBackups() {
-    return this.backupService.listBackups();
+  async listBackups(@CurrentUser() user: AuthenticatedUser) {
+    return this.backupService.listBackups(user.id);
   }
 
   @Get('verify/:filename')
-  async verifyBackup(@Param('filename') filename: string) {
-    return this.backupService.verifyBackup(filename);
+  async verifyBackup(
+    @Param('filename') filename: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.backupService.verifyBackup(filename, user.id);
   }
 
   @Get('stats')
-  async getDatabaseStats() {
-    return this.backupService.getDatabaseStats();
+  async getDatabaseStats(@CurrentUser() user: AuthenticatedUser) {
+    return this.backupService.getDatabaseStats(user.id);
   }
 
   @Delete(':filename')
-  async deleteBackup(@Param('filename') filename: string) {
-    return this.backupService.deleteBackup(filename);
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteBackup(
+    @Param('filename') filename: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.backupService.deleteBackup(filename, user.id);
   }
 }

@@ -102,7 +102,8 @@ export class BillingService {
           create: charges.map((c) => ({
             chargeId: c.id,
             cptCode: c.cptCode,
-            amount: c.fee,
+            description: c.description,
+            fee: c.fee,
           })),
         },
       },

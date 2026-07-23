@@ -29,10 +29,9 @@ export class RegisterDto {
   @IsString()
   phone?: string;
 
-  @ApiPropertyOptional({ example: 'provider', enum: ['admin', 'provider', 'staff', 'patient'] })
-  @IsOptional()
-  @IsString()
-  role?: string;
+  // SECURITY: Public registration NEVER accepts a role.
+  // Staff accounts are created via admin invitation only.
+  // The 'role' field has been intentionally removed.
 }
 
 export class LoginDto {

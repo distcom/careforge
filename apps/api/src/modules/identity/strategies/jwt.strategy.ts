@@ -15,10 +15,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     configService: ConfigService,
     private authService: AuthService,
   ) {
+    const secret = configService.get<string>('JWT_SECRET');
+    if (!secret) {
+      throw new Error('FATAL: JWT_SECRET is required for JwtStrategy');
+    }
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: configService.get('JWT_SECRET', 'careforge-dev-secret'),
+      secretOrKey: secret,
     });
   }
 
