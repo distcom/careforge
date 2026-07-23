@@ -1,34 +1,37 @@
 # 🏥 CareForge EHR Platform
 
-> **Forging the future of healthcare** — A modern, comprehensive Electronic Health Records platform built from the ground up with TypeScript, NestJS, Next.js, and PostgreSQL.
+> **Forging the future of healthcare** — A modern Electronic Health Records platform built with TypeScript, NestJS, Next.js, and PostgreSQL.
+
+> ⚠️ **EXPERIMENTAL PROTOTYPE** — This software is NOT production-ready, NOT HIPAA compliant, NOT ONC certified, and NOT clinically safe for patient care. See [IMPLEMENTATION_STATUS.md](./IMPLEMENTATION_STATUS.md) for honest feature status.
 
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.4-blue)
 ![NestJS](https://img.shields.io/badge/NestJS-10-red)
 ![Next.js](https://img.shields.io/badge/Next.js-14-black)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue)
 ![Prisma](https://img.shields.io/badge/Prisma-5-2D3748)
-![License](https://img.shields.io/badge/License-MIT-green)
+![Status](https://img.shields.io/badge/Status-Experimental-orange)
 
 ---
 
 ## Overview
 
-CareForge is a full-featured, enterprise-grade EHR (Electronic Health Records) platform designed for modern healthcare practices. It provides a complete suite of clinical, administrative, and billing tools with a focus on interoperability, security, and usability.
+CareForge is an EHR (Electronic Health Records) platform in active development. It aims to provide clinical, administrative, and billing tools with a focus on interoperability, security, and usability.
 
-### Key Highlights
+**Current state**: The codebase contains partial backend implementations for 26 domain modules with database models, service logic, and API endpoints. However, most features are incomplete workflows, simulated integrations, or untested code. No feature has been validated for production use.
 
-- **26 domain modules** covering the full clinical workflow
-- **HL7 v2.x** message processing (ORM, ORU, ADT)
-- **FHIR R4** API endpoints for interoperability
-- **C-CDA/CCD** document generation for care continuity
-- **X12 EDI 837P** claim generation for billing
-- **ePrescribing** with NCPDP SCRIPT standard
-- **Drug interaction checking** (drug-drug, drug-allergy, duplicate therapy)
-- **Real-time** WebSocket notifications + WebRTC telehealth
-- **Pediatric growth charts** (WHO/CDC LMS percentiles)
-- **i18n** support for 8 languages
-- **Patient merge/deduplication** with fuzzy matching
-- **Database backup/restore** utilities
+### What Exists (Partial)
+
+- 26 domain module scaffolds with service logic
+- Prisma schema with 50+ models
+- JWT auth with RBAC guards (deny-by-default)
+- HL7 v2.x message generation/parsing (string-level, no transport)
+- FHIR R4 resource mapping (no profile validation)
+- C-CDA XML generation (no schema validation)
+- X12 837P string generation (no clearinghouse transport)
+- Drug interaction checking (hard-coded data, no licensed source)
+- ePrescribing XML generation (no pharmacy network transmission)
+- WebSocket gateway (no signaling server)
+- Next.js frontend with basic dashboard pages
 
 ---
 
@@ -207,27 +210,27 @@ All endpoints are prefixed with `/api/v1` and require JWT Bearer authentication 
 
 ---
 
-## Interoperability
+## Interoperability (Simulated — Not Validated)
 
-### HL7 v2.x
-- **ORM^O01** — Incoming/outgoing lab orders
-- **ORU^R01** — Lab results ingestion with abnormal flagging
-- **ADT^A01/A04/A08** — Patient demographics sync
-- Automatic ACK response generation
+> ⚠️ All interoperability features currently generate/parse strings locally. None perform actual network transmission, schema validation, or conformance testing.
 
-### FHIR R4
-- Patient, Encounter, Observation, Condition, AllergyIntolerance, MedicationRequest, Immunization resources
-- Bundle responses with pagination
-- Capability statement at `/fhir/metadata`
+### HL7 v2.x (String generation/parsing only)
+- ORM^O01 message string generation
+- ORU^R01 result string parsing
+- ADT^A01/A04/A08 patient sync string parsing
+- No MLLP transport, no durable queues, no ACK/NAK handling
 
-### C-CDA
-- Continuity of Care Document (CCD) generation
-- Includes: demographics, allergies, medications, conditions, vitals, immunizations, encounters
-- XML output compliant with HL7 C-CDA R2.1
+### FHIR R4 (Basic mapping only)
+- Patient, Encounter, Observation resource mapping
+- No SMART on FHIR, no profile validation, no conformance testing
 
-### X12 EDI
-- 837P professional claim generation
-- Segment-level formatting (ISA, GS, ST, CLM, SV1, SE, GE, IEA)
+### C-CDA (XML string generation only)
+- CCD XML string assembly
+- No CDA schema validation, no template conformance
+
+### X12 EDI (String generation only)
+- 837P segment string assembly
+- No clearinghouse transport, no 999/277CA processing
 
 ---
 
@@ -270,16 +273,19 @@ cd apps/api && npx prisma studio
 
 ---
 
-## Security
+## Security (Partial — Not Audited)
 
-- **JWT + Refresh Tokens** with configurable expiry
-- **Role-Based Access Control (RBAC)** with granular permissions
-- **MFA** support (TOTP)
-- **Break-glass access** with audit logging
-- **Helmet.js** security headers + CORS
-- **Input validation** via class-validator (whitelist + forbidNonWhitelisted)
-- **Full audit trail** on all clinical data access
-- **Soft deletes** on sensitive records
+> ⚠️ Security measures are partially implemented. No penetration testing or security audit has been performed.
+
+- JWT + Refresh Tokens with rotation and reuse detection
+- Deny-by-default global auth guard
+- Role-Based Access Control (RBAC) with granular permissions
+- Account lockout after failed attempts
+- Rate limiting (100 req/60s per IP)
+- Helmet.js security headers + CORS
+- Input validation via class-validator
+- Backup operations restricted to admin with path traversal protection
+- **NOT implemented**: MFA enrollment, contextual authorization, break-glass, audit tamper evidence, encryption at rest
 
 ---
 
