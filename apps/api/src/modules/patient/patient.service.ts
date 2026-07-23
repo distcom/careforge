@@ -1,11 +1,29 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../infrastructure/database/prisma.service';
+import { AuditService } from '../../infrastructure/audit/audit.service';
 import { PaginationQuery, PaginatedResult } from '../../common/dto/pagination.dto';
-import { CreatePatientDto, UpdatePatientDto, PatientQueryDto } from './dto/patient.dto';
+import { CreatePatientDto, UpdatePatientDto, PatientQueryDto, DuplicateCheckDto } from './dto/patient.dto';
+
+export interface DuplicateMatch {
+  patientId: string;
+  firstName: string;
+  lastName: string;
+  dateOfBirth: Date;
+  ssn?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  matchScore: number;
+  matchReasons: string[];
+}
 
 @Injectable()
 export class PatientService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(PatientService.name);
+
+  constructor(
+    private prisma: PrismaService,
+    private auditService: AuditService,
+  ) {}
 
   async findAll(query: PatientQueryDto): Promise<PaginatedResult<any>> {
     const where: any = { deletedAt: null };
@@ -64,10 +82,32 @@ export class PatientService {
     return patient;
   }
 
-  async create(dto: CreatePatientDto) {
-    const mrn = dto.medicalRecordNumber || `MRN-${Date.now().toString(36).toUpperCase()}`;
+  async create(dto: CreatePatientDto, registeredById?: string) {
+    // Check for potential duplicates before creating
+    const duplicates = await this.checkDuplicates({
+      firstName: dto.firstName,
+      lastName: dto.lastName,
+      dateOfBirth: dto.dateOfBirth,
+      ssn: dto.ssn,
+      email: dto.email,
+    });
 
-    return this.prisma.patient.create({
+    if (duplicates.length > 0 && duplicates[0].matchScore >= 90) {
+      throw new ConflictException({
+        message: 'Potential duplicate patient found',
+        duplicates: duplicates.map(d => ({
+          id: d.patientId,
+          name: `${d.firstName} ${d.lastName}`,
+          dateOfBirth: d.dateOfBirth,
+          matchScore: d.matchScore,
+          matchReasons: d.matchReasons,
+        })),
+      });
+    }
+
+    const mrn = dto.medicalRecordNumber || await this.generateMRN();
+
+    const patient = await this.prisma.patient.create({
       data: {
         medicalRecordNumber: mrn,
         firstName: dto.firstName,
@@ -94,15 +134,175 @@ export class PatientService {
         status: dto.status || 'ACTIVE',
         facilityId: dto.facilityId,
         notes: dto.notes,
+        // Guarantor information
+        guarantorFirstName: dto.guarantorFirstName,
+        guarantorLastName: dto.guarantorLastName,
+        guarantorRelationship: dto.guarantorRelationship,
+        guarantorPhone: dto.guarantorPhone,
+        guarantorEmail: dto.guarantorEmail,
+        guarantorAddress: dto.guarantorAddress,
+        guarantorCity: dto.guarantorCity,
+        guarantorState: dto.guarantorState,
+        guarantorZipCode: dto.guarantorZipCode,
+        guarantorEmployer: dto.guarantorEmployer,
+        // Registration metadata
+        registeredById,
+        registeredAt: new Date(),
+        registrationFacilityId: dto.facilityId,
+        // Nested relations
         contacts: dto.contacts?.length
           ? { create: dto.contacts }
           : undefined,
         insurances: dto.insurances?.length
-          ? { create: dto.insurances }
+          ? {
+              create: dto.insurances.map(ins => ({
+                companyName: ins.companyName,
+                planName: ins.planName,
+                policyNumber: ins.policyNumber,
+                groupNumber: ins.groupNumber,
+                subscriberName: ins.subscriberName,
+                subscriberDob: ins.subscriberDob ? new Date(ins.subscriberDob) : undefined,
+                relationship: ins.relationship,
+                priority: ins.priority || 1,
+                effectiveDate: ins.effectiveDate ? new Date(ins.effectiveDate) : undefined,
+                terminationDate: ins.terminationDate ? new Date(ins.terminationDate) : undefined,
+              })),
+            }
+          : undefined,
+        consents: dto.consents?.length
+          ? {
+              create: dto.consents.map(c => ({
+                type: c.type,
+                status: c.acknowledged ? 'SIGNED' : 'PENDING',
+                signedAt: c.signedAt ? new Date(c.signedAt) : c.acknowledged ? new Date() : undefined,
+              })),
+            }
           : undefined,
       },
-      include: { contacts: true, insurances: true },
+      include: { contacts: true, insurances: true, consents: true },
     });
+
+    // Audit log for patient registration
+    await this.auditService.log({
+      action: 'PATIENT_REGISTERED',
+      entityType: 'Patient',
+      entityId: patient.id,
+      userId: registeredById,
+      details: {
+        mrn: patient.medicalRecordNumber,
+        facilityId: dto.facilityId,
+        hasInsurance: !!dto.insurances?.length,
+        hasConsents: !!dto.consents?.length,
+        duplicateWarnings: duplicates.length,
+      },
+    });
+
+    this.logger.log(`Patient registered: ${patient.id} (MRN: ${mrn}) by user ${registeredById}`);
+
+    return patient;
+  }
+
+  private async generateMRN(): Promise<string> {
+    const timestamp = Date.now().toString(36).toUpperCase();
+    const random = Math.random().toString(36).substring(2, 6).toUpperCase();
+    return `MRN-${timestamp}-${random}`;
+  }
+
+  async checkDuplicates(dto: DuplicateCheckDto): Promise<DuplicateMatch[]> {
+    const dob = new Date(dto.dateOfBirth);
+    const dobStart = new Date(dob.getFullYear(), dob.getMonth(), dob.getDate());
+    const dobEnd = new Date(dob.getFullYear(), dob.getMonth(), dob.getDate() + 1);
+
+    // Find potential matches by name + DOB, SSN, or email
+    const candidates = await this.prisma.patient.findMany({
+      where: {
+        deletedAt: null,
+        OR: [
+          // Exact SSN match (highest confidence)
+          ...(dto.ssn ? [{ ssn: dto.ssn }] : []),
+          // Exact email match
+          ...(dto.email ? [{ email: { equals: dto.email, mode: 'insensitive' } }] : []),
+          // Name + DOB match
+          {
+            firstName: { equals: dto.firstName, mode: 'insensitive' },
+            lastName: { equals: dto.lastName, mode: 'insensitive' },
+            dateOfBirth: { gte: dobStart, lt: dobEnd },
+          },
+          // Phonetic name match (same first initial + last name + DOB)
+          {
+            firstName: { startsWith: dto.firstName.charAt(0), mode: 'insensitive' },
+            lastName: { equals: dto.lastName, mode: 'insensitive' },
+            dateOfBirth: { gte: dobStart, lt: dobEnd },
+          },
+        ],
+      },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        dateOfBirth: true,
+        ssn: true,
+        email: true,
+        phone: true,
+        medicalRecordNumber: true,
+      },
+      take: 10,
+    });
+
+    // Score each candidate
+    return candidates
+      .map(candidate => {
+        const matchReasons: string[] = [];
+        let score = 0;
+
+        // SSN exact match: 50 points
+        if (dto.ssn && candidate.ssn === dto.ssn) {
+          score += 50;
+          matchReasons.push('SSN match');
+        }
+
+        // Email exact match: 40 points
+        if (dto.email && candidate.email?.toLowerCase() === dto.email.toLowerCase()) {
+          score += 40;
+          matchReasons.push('Email match');
+        }
+
+        // Name match: up to 30 points
+        const firstNameMatch = candidate.firstName.toLowerCase() === dto.firstName.toLowerCase();
+        const lastNameMatch = candidate.lastName.toLowerCase() === dto.lastName.toLowerCase();
+        if (firstNameMatch && lastNameMatch) {
+          score += 30;
+          matchReasons.push('Full name match');
+        } else if (lastNameMatch) {
+          score += 15;
+          matchReasons.push('Last name match');
+        }
+
+        // DOB match: 20 points
+        const candidateDob = new Date(candidate.dateOfBirth);
+        if (
+          candidateDob.getFullYear() === dob.getFullYear() &&
+          candidateDob.getMonth() === dob.getMonth() &&
+          candidateDob.getDate() === dob.getDate()
+        ) {
+          score += 20;
+          matchReasons.push('Date of birth match');
+        }
+
+        return {
+          patientId: candidate.id,
+          firstName: candidate.firstName,
+          lastName: candidate.lastName,
+          dateOfBirth: candidate.dateOfBirth,
+          ssn: candidate.ssn,
+          email: candidate.email,
+          phone: candidate.phone,
+          matchScore: Math.min(score, 100),
+          matchReasons,
+        };
+      })
+      .filter(m => m.matchScore >= 30) // Only return meaningful matches
+      .sort((a, b) => b.matchScore - a.matchScore);
   }
 
   async update(id: string, dto: UpdatePatientDto) {

@@ -99,12 +99,43 @@ export class InsuranceDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @IsDateString()
+  subscriberDob?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsString()
   relationship?: string;
 
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()
   priority?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  effectiveDate?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  terminationDate?: string;
+}
+
+export class ConsentDto {
+  @ApiProperty({ description: 'Consent type: TREATMENT, PRIVACY, FINANCIAL, HIPAA_NOTICE' })
+  @IsString()
+  type: string;
+
+  @ApiPropertyOptional({ default: true })
+  @IsOptional()
+  @IsBoolean()
+  acknowledged?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  signedAt?: string;
 }
 
 export class CreatePatientDto {
@@ -244,6 +275,88 @@ export class CreatePatientDto {
   @ValidateNested({ each: true })
   @Type(() => InsuranceDto)
   insurances?: InsuranceDto[];
+
+  @ApiPropertyOptional({ type: [ConsentDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ConsentDto)
+  consents?: ConsentDto[];
+
+  // Guarantor fields
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  guarantorFirstName?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  guarantorLastName?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  guarantorRelationship?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  guarantorPhone?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsEmail()
+  guarantorEmail?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  guarantorAddress?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  guarantorCity?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  guarantorState?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  guarantorZipCode?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  guarantorEmployer?: string;
+}
+
+export class DuplicateCheckDto {
+  @ApiProperty()
+  @IsString()
+  firstName: string;
+
+  @ApiProperty()
+  @IsString()
+  lastName: string;
+
+  @ApiProperty()
+  @IsDateString()
+  dateOfBirth: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  ssn?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsEmail()
+  email?: string;
 }
 
 export class UpdatePatientDto extends PartialType(CreatePatientDto) {}
