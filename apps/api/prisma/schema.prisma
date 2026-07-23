@@ -49,6 +49,9 @@ model User {
   providerSchedules ProviderSchedule[]
   scheduleExceptions ScheduleException[]
   waitlistEntries WaitlistEntry[]
+  // Clinical note relations
+  authoredNotes ClinicalNote[] @relation("NoteAuthor")
+  attestedNotes ClinicalNote[] @relation("NoteAttester")
 
   @@map("users")
 }
@@ -450,21 +453,29 @@ model Encounter {
   providerId      String    @map("provider_id")
   facilityId      String?   @map("facility_id")
   appointmentId   String?   @unique @map("appointment_id")
-  type            String    @default("OFFICE_VISIT")
-  status          String    @default("IN_PROGRESS")
+  type            String    @default("OFFICE_VISIT") // OFFICE_VISIT, TELEHEALTH, PROCEDURE, HOSPITAL, EMERGENCY, HOME
+  status          String    @default("IN_PROGRESS") // DRAFT, IN_PROGRESS, PENDING_REVIEW, SIGNED, AMENDED, ENTERED_IN_ERROR
   chiefComplaint  String?   @map("chief_complaint")
-  hpi             String?
-  ros             String?
+  hpi             String?   // History of Present Illness
+  ros             String?   // Review of Systems
   physicalExam    String?   @map("physical_exam")
   assessment      String?
   plan            String?
   instructions    String?
+  // Lifecycle tracking
   startedAt       DateTime? @map("started_at")
   completedAt     DateTime? @map("completed_at")
   signedAt        DateTime? @map("signed_at")
   signedById      String?   @map("signed_by_id")
   cosignedById    String?   @map("cosigned_by_id")
   cosignedAt      DateTime? @map("cosigned_at")
+  amendedAt       DateTime? @map("amended_at")
+  amendedById     String?   @map("amended_by_id")
+  amendmentReason String?   @map("amendment_reason")
+  enteredInErrorAt DateTime? @map("entered_in_error_at")
+  enteredInErrorById String? @map("entered_in_error_by_id")
+  enteredInErrorReason String? @map("entered_in_error_reason")
+  // Metadata
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
   deletedAt       DateTime? @map("deleted_at")
@@ -477,10 +488,42 @@ model Encounter {
   procedures      EncounterProcedure[]
   vitalSigns      VitalSign[]
   charges         Charge[]
+  clinicalNotes   ClinicalNote[]
 
   @@index([patientId])
   @@index([providerId])
+  @@index([status])
   @@map("encounters")
+}
+
+model ClinicalNote {
+  id              String    @id @default(uuid())
+  encounterId     String    @map("encounter_id")
+  authorId        String    @map("author_id")
+  noteType        String    @map("note_type") // PROGRESS, CONSULTATION, PROCEDURE, DISCHARGE, etc.
+  title           String?
+  content         String
+  status          String    @default("DRAFT") // DRAFT, FINAL, AMENDED, ENTERED_IN_ERROR
+  // Attestation
+  attestedAt      DateTime? @map("attested_at")
+  attestedById    String?   @map("attested_by_id")
+  // Amendment tracking (non-destructive)
+  isAmendment     Boolean   @default(false) @map("is_amendment")
+  amendsNoteId    String?   @map("amends_note_id")
+  amendmentReason String?   @map("amendment_reason")
+  // Metadata
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  encounter       Encounter @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  author          User      @relation("NoteAuthor", fields: [authorId], references: [id])
+  attestedBy      User?     @relation("NoteAttester", fields: [attestedById], references: [id])
+  amendsNote      ClinicalNote? @relation("NoteAmendments", fields: [amendsNoteId], references: [id])
+  amendments      ClinicalNote[] @relation("NoteAmendments")
+
+  @@index([encounterId])
+  @@index([authorId])
+  @@map("clinical_notes")
 }
 
 model EncounterDiagnosis {
