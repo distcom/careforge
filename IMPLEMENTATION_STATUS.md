@@ -31,19 +31,24 @@
 | Account lockout | Partial backend | `auth.service.ts` | Redis-based; no integration tests |
 | Session revocation | Partial backend | `auth.service.ts` | Redis key-based; no admin UI |
 | Password reset | Partial backend | `auth.service.ts` | Token generation exists; no email delivery |
-| Contextual authorization (patient/facility) | Not started | — | No patient-scoped or facility-scoped checks |
-| Break-glass access | Not started | — | Audit model exists; no enforcement logic |
+| Contextual authorization (patient/facility) | Implemented | `patient-access.guard.ts` | Patient-scoped checks: facility, provider, encounter assignment |
+| Break-glass access | Implemented | `patient-access.guard.ts` | Requires justification header, fully audited, time-limited |
 
 ### Patient Management
 
 | Feature | Status | Evidence | Notes |
 |---------|--------|----------|-------|
-| Patient CRUD | Partial backend | `patient.service.ts` | Basic CRUD; no consent enforcement |
+| Patient registration workflow | Implemented | `patient.service.ts`, `patient.controller.ts`, `patients/new/page.tsx` | Multi-step form with duplicate detection, insurance, guarantor, consent capture |
+| Duplicate detection | Implemented | `patient.service.ts` (checkDuplicates) | Scoring algorithm: SSN (50pts), email (40pts), name (30pts), DOB (20pts); blocks >=90% |
+| Patient CRUD | Partial backend | `patient.service.ts` | Basic CRUD; consent enforcement at registration |
 | Patient search/filter | Partial backend | `patient.controller.ts` | Pagination exists; no advanced search |
 | Patient merge/dedup | Partial backend | `patient-merge.service.ts` | Fuzzy matching coded; no validation tests |
-| Demographics | Database only | `schema.prisma` | Model exists; no validation rules |
-| Contacts/emergency | Database only | `schema.prisma` | Model exists; no service methods |
-| Consent management | Database only | `schema.prisma` | Model exists; no enforcement |
+| Demographics | Implemented | `schema.prisma`, `patient.dto.ts` | Full validation, race/ethnicity per ONC requirements |
+| Contacts/emergency | Implemented | `patient.dto.ts`, `patients/new/page.tsx` | Emergency contact capture at registration |
+| Insurance capture | Implemented | `patient.dto.ts`, `patients/new/page.tsx` | Multiple insurances, subscriber info, effective dates |
+| Guarantor capture | Implemented | `schema.prisma`, `patients/new/page.tsx` | Responsible party for billing |
+| Consent management | Partial backend | `schema.prisma`, `patient.service.ts` | Capture at registration; no enforcement on access |
+| Patient-scoped authorization | Implemented | `patient-access.guard.ts` | Facility, provider, encounter checks; break-glass with audit |
 | Sensitive record segmentation | Not started | — | — |
 
 ### Scheduling
