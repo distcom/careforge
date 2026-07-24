@@ -67,6 +67,11 @@ model User {
   signedDocuments ClinicalDocument[] @relation("DocumentSigner")
   // Insurance relations
   verifiedInsurances PatientInsurance[] @relation("InsuranceVerifier")
+  // Consent relations
+  signedConsents Consent[] @relation("ConsentSigner")
+  revokedConsents Consent[] @relation("ConsentRevoker")
+  createdRestrictions PrivacyRestriction[] @relation("RestrictionCreator")
+  accessOverrides AccessOverride[]
 
   @@map("users")
 }
@@ -245,6 +250,9 @@ model Patient {
   messageThreads      MessageThread[]
   telehealthSessions  TelehealthSession[]
   waitlistEntries     WaitlistEntry[]
+  consentRecords      Consent[]
+  privacyRestrictions PrivacyRestriction[]
+  accessOverrides     AccessOverride[]
 
   @@index([lastName, firstName])
   @@index([dateOfBirth])
@@ -922,6 +930,7 @@ model ClinicalDocument {
   signedBy    User?     @relation("DocumentSigner", fields: [signedById], references: [id])
   previousVersion ClinicalDocument? @relation("DocumentVersions", fields: [previousVersionId], references: [id])
   versions    ClinicalDocument[] @relation("DocumentVersions")
+  consents    Consent[]
 
   @@index([patientId])
   @@index([status])
@@ -1416,4 +1425,94 @@ model Task {
   @@index([status])
   @@index([assignedToId])
   @@map("tasks")
+}
+
+// ============================================
+// CONSENT & PRIVACY
+// ============================================
+
+model Consent {
+  id              String    @id @default(uuid())
+  patientId       String    @map("patient_id")
+  consentType     String    @map("consent_type") // TREATMENT, RELEASE_OF_INFO, RESEARCH, HIPAA, FINANCIAL, PROCEDURE, TELEHEALTH
+  status          String    @default("PENDING") // PENDING, GRANTED, DENIED, REVOKED, EXPIRED
+  grantedAt       DateTime? @map("granted_at")
+  revokedAt       DateTime? @map("revoked_at")
+  expiresAt       DateTime? @map("expires_at")
+  // Consent details
+  scope           String?   // Description of what consent covers
+  restrictions    String?   // Any limitations on consent
+  // Signatures
+  signedById      String?   @map("signed_by_id")
+  signedAt        DateTime? @map("signed_at")
+  witnessName     String?   @map("witness_name")
+  witnessSignedAt DateTime? @map("witness_signed_at")
+  // Documentation
+  documentId      String?   @map("document_id")
+  notes           String?
+  // Revocation
+  revocationReason String?  @map("revocation_reason")
+  revokedById     String?   @map("revoked_by_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  patient         Patient   @relation(fields: [patientId], references: [id])
+  signedBy        User?     @relation("ConsentSigner", fields: [signedById], references: [id])
+  revokedBy       User?     @relation("ConsentRevoker", fields: [revokedById], references: [id])
+  document        ClinicalDocument? @relation(fields: [documentId], references: [id])
+
+  @@index([patientId])
+  @@index([consentType])
+  @@index([status])
+  @@map("consents")
+}
+
+model PrivacyRestriction {
+  id              String    @id @default(uuid())
+  patientId       String    @map("patient_id")
+  restrictionType String    @map("restriction_type") // SENSITIVE_RECORD, NO_RELEASE, VIP, EMPLOYEE, RESTRICTED_ACCESS
+  level           String    @default("STANDARD") // STANDARD, ELEVATED, HIGH, MAXIMUM
+  reason          String?
+  // Access control
+  restrictedToRoles String? @map("restricted_to_roles") // JSON array of role names
+  restrictedToUsers String? @map("restricted_to_users") // JSON array of user IDs
+  // Effective dates
+  effectiveAt     DateTime  @default(now()) @map("effective_at")
+  expiresAt       DateTime? @map("expires_at")
+  // Audit
+  createdById     String?   @map("created_by_id")
+  notes           String?
+  isActive        Boolean   @default(true) @map("is_active")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  patient         Patient   @relation(fields: [patientId], references: [id])
+  createdBy       User?     @relation("RestrictionCreator", fields: [createdById], references: [id])
+  accessOverrides AccessOverride[]
+
+  @@index([patientId])
+  @@index([restrictionType])
+  @@map("privacy_restrictions")
+}
+
+model AccessOverride {
+  id              String    @id @default(uuid())
+  patientId       String    @map("patient_id")
+  userId          String    @map("user_id")
+  restrictionId   String?   @map("restriction_id")
+  overrideType    String    @map("override_type") // BREAK_GLASS, EMERGENCY, AUTHORIZED
+  reason          String
+  // Audit
+  accessedAt      DateTime  @default(now()) @map("accessed_at")
+  ipAddress       String?   @map("ip_address")
+  durationMinutes Int?      @map("duration_minutes")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  patient         Patient   @relation(fields: [patientId], references: [id])
+  user            User      @relation(fields: [userId], references: [id])
+  restriction     PrivacyRestriction? @relation(fields: [restrictionId], references: [id])
+
+  @@index([patientId])
+  @@index([userId])
+  @@map("access_overrides")
 }
