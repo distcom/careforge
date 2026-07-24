@@ -1,5 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../infrastructure/database/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import { PaginationQuery, PaginatedResult } from '../../common/dto/pagination.dto';
 
 export interface CreateImmunizationDto {
@@ -21,7 +22,12 @@ export interface CreateImmunizationDto {
 
 @Injectable()
 export class ImmunizationService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(ImmunizationService.name);
+
+  constructor(
+    private prisma: PrismaService,
+    private auditService: AuditService,
+  ) {}
 
   async findAll(patientId: string, query: PaginationQuery): Promise<PaginatedResult<any>> {
     const where = { patientId };
@@ -33,7 +39,7 @@ export class ImmunizationService {
   }
 
   async create(dto: CreateImmunizationDto) {
-    return this.prisma.immunization.create({
+    const immunization = await this.prisma.immunization.create({
       data: {
         patientId: dto.patientId,
         cvxCode: dto.cvxCode,
@@ -51,18 +57,73 @@ export class ImmunizationService {
         notes: dto.notes,
       },
     });
+
+    await this.auditService.log({
+      action: 'IMMUNIZATION_ADMINISTERED',
+      entityType: 'Immunization',
+      entityId: immunization.id,
+      userId: dto.administeredById,
+      details: {
+        patientId: dto.patientId,
+        vaccineName: dto.vaccineName,
+        cvxCode: dto.cvxCode,
+        lotNumber: dto.lotNumber,
+        doseNumber: dto.doseNumber,
+      },
+    });
+
+    // Log refusals separately for tracking
+    if (dto.status === 'refused' && dto.refusalReason) {
+      await this.auditService.log({
+        action: 'IMMUNIZATION_REFUSED',
+        entityType: 'Immunization',
+        entityId: immunization.id,
+        userId: dto.administeredById,
+        details: {
+          patientId: dto.patientId,
+          vaccineName: dto.vaccineName,
+          refusalReason: dto.refusalReason,
+        },
+      });
+    }
+
+    return immunization;
   }
 
-  async update(id: string, dto: Partial<CreateImmunizationDto>) {
+  async update(id: string, dto: Partial<CreateImmunizationDto>, userId?: string) {
     const record = await this.prisma.immunization.findUnique({ where: { id } });
     if (!record) throw new NotFoundException('Immunization record not found');
+
     const data: any = { ...dto };
     if (dto.administeredAt) data.administeredAt = new Date(dto.administeredAt);
-    return this.prisma.immunization.update({ where: { id }, data });
+
+    const updated = await this.prisma.immunization.update({ where: { id }, data });
+
+    await this.auditService.log({
+      action: 'IMMUNIZATION_UPDATED',
+      entityType: 'Immunization',
+      entityId: id,
+      userId,
+      details: { patientId: record.patientId, vaccineName: record.vaccineName },
+    });
+
+    return updated;
   }
 
-  async remove(id: string) {
+  async remove(id: string, userId?: string) {
+    const record = await this.prisma.immunization.findUnique({ where: { id } });
+    if (!record) throw new NotFoundException('Immunization record not found');
+
     await this.prisma.immunization.delete({ where: { id } });
+
+    await this.auditService.log({
+      action: 'IMMUNIZATION_DELETED',
+      entityType: 'Immunization',
+      entityId: id,
+      userId,
+      details: { patientId: record.patientId, vaccineName: record.vaccineName },
+    });
+
     return { message: 'Immunization record deleted' };
   }
 }
