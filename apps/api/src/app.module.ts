@@ -43,6 +43,7 @@ import { ConsentModule } from './modules/consent/consent.module';
 import { ClinicalDecisionSupportModule } from './modules/clinical-decision-support/clinical-decision-support.module';
 import { QualityReportingModule } from './modules/quality-reporting/quality-reporting.module';
 import { DataMigrationModule } from './modules/data-migration/data-migration.module';
+import { Hl7v2Module } from './modules/hl7v2/hl7v2.module';
 
 @Module({
   imports: [
@@ -101,6 +102,7 @@ import { DataMigrationModule } from './modules/data-migration/data-migration.mod
     ClinicalDecisionSupportModule,
     QualityReportingModule,
     DataMigrationModule,
+    Hl7v2Module,
   ],
   providers: [
     // SECURITY: Deny-by-default — all routes require JWT unless @Public()
