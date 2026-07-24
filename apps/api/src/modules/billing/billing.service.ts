@@ -1,5 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../infrastructure/database/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import { PaginationQuery, PaginatedResult } from '../../common/dto/pagination.dto';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -27,7 +28,12 @@ export interface CreatePaymentDto {
 
 @Injectable()
 export class BillingService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(BillingService.name);
+
+  constructor(
+    private prisma: PrismaService,
+    private auditService: AuditService,
+  ) {}
 
   // Charges
   async findCharges(query: PaginationQuery & { patientId?: string; status?: string }): Promise<PaginatedResult<any>> {
@@ -51,8 +57,8 @@ export class BillingService {
     return new PaginatedResult(charges, total, query.page, query.limit);
   }
 
-  async createCharge(dto: CreateChargeDto) {
-    return this.prisma.charge.create({
+  async createCharge(dto: CreateChargeDto, userId?: string) {
+    const charge = await this.prisma.charge.create({
       data: {
         patientId: dto.patientId,
         encounterId: dto.encounterId,
@@ -65,6 +71,20 @@ export class BillingService {
         serviceDate: new Date(dto.serviceDate),
       },
     });
+
+    await this.auditService.log({
+      action: 'CHARGE_CREATED',
+      entityType: 'Charge',
+      entityId: charge.id,
+      userId,
+      details: {
+        patientId: dto.patientId,
+        cptCode: dto.cptCode,
+        fee: dto.fee,
+      },
+    });
+
+    return charge;
   }
 
   // Claims
@@ -85,12 +105,12 @@ export class BillingService {
     return new PaginatedResult(claims, total, query.page, query.limit);
   }
 
-  async createClaim(chargeIds: string[], payerName: string, payerId?: string) {
+  async createClaim(chargeIds: string[], payerName: string, payerId?: string, userId?: string) {
     const charges = await this.prisma.charge.findMany({ where: { id: { in: chargeIds } } });
     const totalAmount = charges.reduce((sum, c) => sum + Number(c.fee), 0);
     const claimNumber = `CLM-${Date.now()}-${uuidv4().slice(0, 4).toUpperCase()}`;
 
-    return this.prisma.claim.create({
+    const claim = await this.prisma.claim.create({
       data: {
         claimNumber,
         patientId: charges[0]?.patientId,
@@ -109,18 +129,78 @@ export class BillingService {
       },
       include: { items: true },
     });
+
+    await this.auditService.log({
+      action: 'CLAIM_CREATED',
+      entityType: 'Claim',
+      entityId: claim.id,
+      userId,
+      details: {
+        claimNumber,
+        patientId: charges[0]?.patientId,
+        totalAmount,
+        chargeCount: chargeIds.length,
+      },
+    });
+
+    return claim;
   }
 
-  async submitClaim(id: string) {
-    return this.prisma.claim.update({
+  async submitClaim(id: string, userId?: string) {
+    const claim = await this.prisma.claim.findUnique({ where: { id } });
+    if (!claim) throw new NotFoundException('Claim not found');
+
+    const updated = await this.prisma.claim.update({
       where: { id },
       data: { status: 'SUBMITTED', submittedAt: new Date() },
     });
+
+    await this.auditService.log({
+      action: 'CLAIM_SUBMITTED',
+      entityType: 'Claim',
+      entityId: id,
+      userId,
+      details: {
+        claimNumber: claim.claimNumber,
+        patientId: claim.patientId,
+        totalAmount: claim.totalAmount,
+      },
+    });
+
+    return updated;
+  }
+
+  async recordRemittance(id: string, amount: number, status: string, userId?: string) {
+    const claim = await this.prisma.claim.findUnique({ where: { id } });
+    if (!claim) throw new NotFoundException('Claim not found');
+
+    const updated = await this.prisma.claim.update({
+      where: { id },
+      data: {
+        status,
+        paidAmount: amount,
+        remittanceAt: new Date(),
+      },
+    });
+
+    await this.auditService.log({
+      action: 'REMITTANCE_RECORDED',
+      entityType: 'Claim',
+      entityId: id,
+      userId,
+      details: {
+        claimNumber: claim.claimNumber,
+        amount,
+        status,
+      },
+    });
+
+    return updated;
   }
 
   // Payments
   async createPayment(dto: CreatePaymentDto, postedById?: string) {
-    return this.prisma.payment.create({
+    const payment = await this.prisma.payment.create({
       data: {
         patientId: dto.patientId,
         claimId: dto.claimId,
@@ -132,6 +212,23 @@ export class BillingService {
         notes: dto.notes,
       },
     });
+
+    await this.auditService.log({
+      action: 'PAYMENT_POSTED',
+      entityType: 'Payment',
+      entityId: payment.id,
+      userId: postedById,
+      details: {
+        patientId: dto.patientId,
+        amount: dto.amount,
+        method: dto.method,
+        source: dto.source,
+      },
+    });
+
+    this.logger.log(`Payment posted: $${dto.amount} for patient ${dto.patientId}`);
+
+    return payment;
   }
 
   async getPatientBalance(patientId: string) {
