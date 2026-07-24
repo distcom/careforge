@@ -61,6 +61,10 @@ model User {
   // Procedure relations
   performedProcedures Procedure[] @relation("ProcedurePerformer")
   orderedProcedures Procedure[] @relation("ProcedureOrderer")
+  // Document relations
+  uploadedDocuments ClinicalDocument[] @relation("DocumentUploader")
+  reviewedDocuments ClinicalDocument[] @relation("DocumentReviewer")
+  signedDocuments ClinicalDocument[] @relation("DocumentSigner")
 
   @@map("users")
 }
@@ -499,6 +503,7 @@ model Encounter {
   charges         Charge[]
   clinicalNotes   ClinicalNote[]
   procedureRecords Procedure[]
+  documents       ClinicalDocument[]
 
   @@index([patientId])
   @@index([providerId])
@@ -858,24 +863,49 @@ model Procedure {
 model ClinicalDocument {
   id          String    @id @default(uuid())
   patientId   String    @map("patient_id")
+  encounterId String?   @map("encounter_id")
   categoryId  String?   @map("category_id")
   title       String
   description String?
+  documentType String?  @map("document_type") // LAB_RESULT, IMAGING, CONSULTATION, DISCHARGE_SUMMARY, REFERRAL, CONSENT, OTHER
   fileKey     String    @map("file_key")
   fileUrl     String?   @map("file_url")
+  fileName    String?   @map("file_name")
   mimeType    String?   @map("mime_type")
   fileSize    Int?      @map("file_size")
-  status      String    @default("ACTIVE")
+  status      String    @default("ACTIVE") // DRAFT, PENDING_REVIEW, FINAL, SIGNED, AMENDED, OBSOLETE
   uploadedById String?  @map("uploaded_by_id")
+  reviewedById String?  @map("reviewed_by_id")
+  reviewedAt  DateTime? @map("reviewed_at")
+  signedById  String?   @map("signed_by_id")
+  signedAt    DateTime? @map("signed_at")
+  // Versioning
   version     Int       @default(1)
+  previousVersionId String? @map("previous_version_id")
+  versionNote String?   @map("version_note")
+  // Sharing
+  sharedWithPatient Boolean @default(false) @map("shared_with_patient")
+  sharedAt    DateTime? @map("shared_at")
+  // Source tracking
+  sourceFacility String? @map("source_facility")
+  sourceProvider String? @map("source_provider")
+  receivedAt  DateTime? @map("received_at")
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
   deletedAt   DateTime? @map("deleted_at")
 
   patient     Patient   @relation(fields: [patientId], references: [id])
+  encounter   Encounter? @relation(fields: [encounterId], references: [id])
   category    DocumentCategory? @relation(fields: [categoryId], references: [id])
+  uploadedBy  User?     @relation("DocumentUploader", fields: [uploadedById], references: [id])
+  reviewedBy  User?     @relation("DocumentReviewer", fields: [reviewedById], references: [id])
+  signedBy    User?     @relation("DocumentSigner", fields: [signedById], references: [id])
+  previousVersion ClinicalDocument? @relation("DocumentVersions", fields: [previousVersionId], references: [id])
+  versions    ClinicalDocument[] @relation("DocumentVersions")
 
   @@index([patientId])
+  @@index([status])
+  @@index([documentType])
   @@map("clinical_documents")
 }
 
