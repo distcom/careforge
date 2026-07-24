@@ -41,6 +41,7 @@ import { TelehealthModule } from './modules/telehealth/telehealth.module';
 import { FhirModule } from './modules/fhir/fhir.module';
 import { ConsentModule } from './modules/consent/consent.module';
 import { ClinicalDecisionSupportModule } from './modules/clinical-decision-support/clinical-decision-support.module';
+import { QualityReportingModule } from './modules/quality-reporting/quality-reporting.module';
 
 @Module({
   imports: [
@@ -97,6 +98,7 @@ import { ClinicalDecisionSupportModule } from './modules/clinical-decision-suppo
     FhirModule,
     ConsentModule,
     ClinicalDecisionSupportModule,
+    QualityReportingModule,
   ],
   providers: [
     // SECURITY: Deny-by-default — all routes require JWT unless @Public()
