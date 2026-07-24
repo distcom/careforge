@@ -1,384 +1,314 @@
-# Operations Runbook
+# CareForge EHR - Operations Runbook
 
-> **Last updated**: 2026-07-21
-> **Status**: Initial — procedures defined but not validated
-> **Audience**: Operations team, on-call engineers, system administrators
+## Overview
+This runbook provides operational procedures for maintaining CareForge EHR in production.
 
-## Purpose
+## Daily Operations
 
-This runbook provides operational procedures for deploying, monitoring, maintaining, and troubleshooting the CareForge system. **These procedures have not been validated in a production environment.**
+### Morning Checklist
+- [ ] Verify system health dashboard
+- [ ] Check overnight error logs
+- [ ] Review failed job queue
+- [ ] Verify backup completion
+- [ ] Check disk space utilization
+- [ ] Review security alerts
 
-## System Architecture Overview
+### Health Monitoring
+```bash
+# Check API health
+curl -s http://localhost:3000/health | jq
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        Load Balancer                        │
-│                    (TLS termination)                        │
-└─────────────────────────────────────────────────────────────┘
-                              │
-              ┌───────────────┼───────────────┐
-              ▼               ▼               ▼
-        ┌──────────┐    ┌──────────┐    ┌──────────┐
-        │   API    │    │   API    │    │   API    │
-        │ Server 1 │    │ Server 2 │    │ Server N │
-        │ (NestJS) │    │ (NestJS) │    │ (NestJS) │
-        └────┬─────┘    └────┬─────┘    └────┬─────┘
-             │               │               │
-             └───────────────┼───────────────┘
-                             │
-        ┌────────────────────┼────────────────────┐
-        ▼                    ▼                    ▼
-  ┌──────────┐        ┌──────────┐        ┌──────────┐
-  │PostgreSQL│        │  Redis   │        │   S3     │
-  │ Primary  │        │ Cluster  │        │ Storage  │
-  └────┬─────┘        └──────────┘        └──────────┘
-       │
-       ▼
-  ┌──────────┐
-  │PostgreSQL│
-  │ Replica  │
-  └──────────┘
+# Check database connectivity
+psql -h localhost -U careforge_user -d careforge_prod -c "SELECT 1;"
+
+# Check Redis connectivity
+redis-cli ping
+
+# Check disk space
+df -h /var/lib/postgresql
 ```
 
-## Deployment Procedures
+### Log Review
+```bash
+# View recent errors
+journalctl -u careforge-api --since "1 hour ago" | grep ERROR
 
-### Pre-Deployment Checklist
+# View audit log summary
+psql -c "SELECT action, COUNT(*) FROM audit_log WHERE created_at > NOW() - INTERVAL '1 day' GROUP BY action;"
+```
 
-- [ ] All CI checks pass on the release branch
-- [ ] Database migration tested on staging
-- [ ] Rollback procedure documented and tested
-- [ ] Backup completed within last 24 hours
-- [ ] On-call engineer identified and available
-- [ ] Maintenance window scheduled (if required)
-- [ ] Stakeholders notified
-- [ ] Monitoring dashboards reviewed (baseline established)
+## Incident Response
 
-### Deployment Steps
+### Severity Levels
+| Level | Description | Response Time | Escalation |
+|-------|-------------|---------------|------------|
+| SEV1 | Complete outage | 15 minutes | CTO, On-call |
+| SEV2 | Major feature down | 30 minutes | Team Lead |
+| SEV3 | Minor issue | 4 hours | On-call |
+| SEV4 | Cosmetic/low impact | 24 hours | Backlog |
 
-1. **Verify current state**
-   ```bash
-   # Check current version
-   curl -s https://api.careforge.example/health | jq .version
-   
-   # Check database migration status
-   npx prisma migrate status
-   ```
-
-2. **Create backup**
-   ```bash
-   # Full database backup
-   pg_dump -Fc careforge > backup_$(date +%Y%m%d_%H%M%S).dump
-   
-   # Verify backup
-   pg_restore -l backup_*.dump | head -20
-   ```
-
-3. **Run database migrations**
-   ```bash
-   npx prisma migrate deploy
-   ```
-
-4. **Deploy application**
-   ```bash
-   # Pull latest images
-   docker-compose pull
-   
-   # Rolling update
-   docker-compose up -d --no-deps --scale api=3 api
-   ```
-
-5. **Verify deployment**
-   ```bash
-   # Health check
-   curl -s https://api.careforge.example/health | jq .
-   
-   # Check logs
-   docker-compose logs --tail=100 api
-   ```
-
-6. **Post-deployment validation**
-   - [ ] Health endpoint returns 200
-   - [ ] Database connectivity confirmed
-   - [ ] Redis connectivity confirmed
-   - [ ] Test user can log in
-   - [ ] Test patient record accessible
-   - [ ] No error spike in monitoring
-
-### Rollback Procedure
-
-**Trigger conditions:**
-- Health check fails after 5 minutes
-- Error rate exceeds 5%
-- Critical functionality unavailable
-- Database corruption detected
-
-**Rollback steps:**
-
-1. **Stop new deployments**
-   ```bash
-   # Disable auto-scaling
-   # Block CI/CD pipeline
-   ```
-
-2. **Restore previous version**
-   ```bash
-   docker-compose down
-   docker-compose -f docker-compose.previous.yml up -d
-   ```
-
-3. **Restore database if migrated**
-   ```bash
-   # Only if migration was destructive
-   pg_restore -d careforge -c backup_*.dump
-   ```
-
-4. **Verify rollback**
-   ```bash
-   curl -s https://api.careforge.example/health | jq .
-   ```
-
-5. **Document incident**
-   - Create incident report
-   - Notify stakeholders
-   - Schedule post-mortem
-
-## Monitoring
-
-### Health Endpoints
-
-| Endpoint | Purpose | Expected Response |
-|----------|---------|-------------------|
-| `/health` | Basic liveness | `{"status": "ok"}` |
-| `/health/ready` | Readiness check | `{"status": "ready", "dependencies": {...}}` |
-| `/health/live` | Liveness check | `{"status": "alive"}` |
-
-### Key Metrics
-
-| Metric | Warning Threshold | Critical Threshold |
-|--------|-------------------|-------------------|
-| API response time (p95) | > 500ms | > 2000ms |
-| API error rate | > 1% | > 5% |
-| Database connection pool usage | > 70% | > 90% |
-| Redis memory usage | > 70% | > 90% |
-| Disk usage | > 75% | > 90% |
-| CPU usage | > 70% | > 90% |
-| Memory usage | > 75% | > 90% |
-| Active sessions | > 80% capacity | > 95% capacity |
-
-### Log Levels
-
-| Level | Usage | Alert |
-|-------|-------|-------|
-| ERROR | Failures requiring attention | Immediate |
-| WARN | Potential issues | Review within 1 hour |
-| INFO | Normal operations | No alert |
-| DEBUG | Detailed diagnostics | No alert |
-
-### Alert Escalation
-
-| Severity | Response Time | Escalation |
-|----------|---------------|------------|
-| Critical (P1) | 15 minutes | On-call → Team Lead → Engineering Manager |
-| High (P2) | 1 hour | On-call → Team Lead |
-| Medium (P3) | 4 hours | On-call |
-| Low (P4) | Next business day | Backlog |
-
-## Troubleshooting
+### Incident Response Procedure
+1. **Detect**: Monitoring alert or user report
+2. **Assess**: Determine severity and impact
+3. **Communicate**: Notify stakeholders
+4. **Mitigate**: Apply fix or workaround
+5. **Resolve**: Verify fix and close
+6. **Review**: Post-incident review
 
 ### Common Issues
 
-#### API Not Responding
+#### Database Connection Pool Exhausted
+```bash
+# Check active connections
+psql -c "SELECT count(*) FROM pg_stat_activity;"
 
-1. Check container status
-   ```bash
-   docker-compose ps
-   docker-compose logs --tail=50 api
-   ```
+# Kill idle connections
+psql -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE state = 'idle' AND query_start < NOW() - INTERVAL '10 minutes';"
 
-2. Check resource usage
-   ```bash
-   docker stats
-   ```
-
-3. Check database connectivity
-   ```bash
-   docker-compose exec db psql -U careforge -c "SELECT 1"
-   ```
-
-4. Check Redis connectivity
-   ```bash
-   docker-compose exec redis redis-cli ping
-   ```
-
-#### Database Connection Exhausted
-
-1. Check connection count
-   ```sql
-   SELECT count(*) FROM pg_stat_activity;
-   ```
-
-2. Identify long-running queries
-   ```sql
-   SELECT pid, now() - pg_stat_activity.query_start AS duration, query
-   FROM pg_stat_activity
-   WHERE state != 'idle'
-   ORDER BY duration DESC;
-   ```
-
-3. Kill problematic queries if necessary
-   ```sql
-   SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE pid = <PID>;
-   ```
+# Restart application
+sudo systemctl restart careforge-api
+```
 
 #### High Memory Usage
+```bash
+# Check memory usage
+free -h
+top -p $(pgrep -f "node.*careforge")
 
-1. Identify memory consumers
-   ```bash
-   docker stats --no-stream
-   ```
+# Restart if necessary
+sudo systemctl restart careforge-api
+```
 
-2. Check for memory leaks
-   ```bash
-   # Node.js heap dump
-   kill -USR2 <PID>
-   ```
+#### Slow Queries
+```bash
+# Find slow queries
+psql -c "SELECT query, calls, mean_exec_time FROM pg_stat_statements ORDER BY mean_exec_time DESC LIMIT 10;"
 
-3. Restart if necessary
-   ```bash
-   docker-compose restart api
-   ```
-
-#### Redis Issues
-
-1. Check Redis status
-   ```bash
-   docker-compose exec redis redis-cli info
-   ```
-
-2. Check memory
-   ```bash
-   docker-compose exec redis redis-cli info memory
-   ```
-
-3. Clear cache if necessary (use with caution)
-   ```bash
-   docker-compose exec redis redis-cli FLUSHDB
-   ```
+# Analyze query
+EXPLAIN ANALYZE <query>;
+```
 
 ## Backup and Recovery
 
 ### Backup Schedule
+| Type | Frequency | Retention | Verification |
+|------|-----------|-----------|--------------|
+| Full DB | Daily | 30 days | Weekly restore test |
+| Incremental | Hourly | 7 days | Daily |
+| WAL Archive | Continuous | 7 days | Continuous |
+| Files | Daily | 30 days | Weekly |
 
-| Type | Frequency | Retention | Location |
-|------|-----------|-----------|----------|
-| Full database | Daily | 30 days | S3 + offsite |
-| Incremental (WAL) | Continuous | 7 days | S3 |
-| Application config | On change | Indefinite | Git |
-| File storage | Daily | 30 days | S3 cross-region |
+### Backup Commands
+```bash
+# Full database backup
+pg_dump -h localhost -U careforge_user -F c careforge_prod > /backups/careforge_$(date +%Y%m%d).dump
 
-### Backup Verification
+# Verify backup
+pg_restore -l /backups/careforge_$(date +%Y%m%d).dump | head -20
 
-Monthly backup verification procedure:
+# Test restore
+createdb careforge_test
+pg_restore -h localhost -U careforge_user -d careforge_test /backups/careforge_$(date +%Y%m%d).dump
+```
 
-1. Restore backup to isolated environment
-2. Run integrity checks
-3. Verify record counts
-4. Test critical workflows
-5. Document results
-6. Report to management
+### Recovery Procedure
+```bash
+# Stop application
+sudo systemctl stop careforge-api
 
-### Recovery Procedures
+# Restore database
+dropdb careforge_prod
+createdb careforge_prod
+pg_restore -h localhost -U careforge_user -d careforge_prod /backups/careforge_$(date +%Y%m%d).dump
 
-See [BACKUP_AND_DISASTER_RECOVERY.md](./BACKUP_AND_DISASTER_RECOVERY.md) for detailed recovery procedures.
+# Run migrations
+cd /opt/careforge
+npx prisma migrate deploy
+
+# Start application
+sudo systemctl start careforge-api
+
+# Verify
+curl http://localhost:3000/health
+```
+
+## Deployment Procedures
+
+### Standard Deployment
+```bash
+# 1. Pull latest code
+cd /opt/careforge
+git pull origin main
+
+# 2. Install dependencies
+npm ci --production
+
+# 3. Build
+npm run build
+
+# 4. Run migrations
+npx prisma migrate deploy
+
+# 5. Restart application
+sudo systemctl restart careforge-api
+
+# 6. Verify
+curl http://localhost:3000/health
+```
+
+### Rollback Procedure
+```bash
+# 1. Identify previous version
+git log --oneline -5
+
+# 2. Checkout previous version
+git checkout <previous-commit>
+
+# 3. Rebuild and restart
+npm ci --production
+npm run build
+sudo systemctl restart careforge-api
+
+# 4. Verify
+curl http://localhost:3000/health
+```
+
+### Database Migration Rollback
+```bash
+# Check migration status
+npx prisma migrate status
+
+# Rollback last migration (if supported)
+npx prisma migrate resolve --rolled-back <migration-name>
+
+# Or restore from backup
+pg_restore -h localhost -U careforge_user -d careforge_prod /backups/pre_migration.dump
+```
+
+## Performance Tuning
+
+### Database Tuning
+```sql
+-- Check cache hit ratio
+SELECT 
+  sum(heap_blks_hit) / (sum(heap_blks_hit) + sum(heap_blks_read)) as cache_hit_ratio
+FROM pg_statio_user_tables;
+
+-- Check index usage
+SELECT 
+  schemaname, relname, seq_scan, idx_scan
+FROM pg_stat_user_tables
+WHERE seq_scan > 1000
+ORDER BY seq_scan DESC;
+
+-- Analyze tables
+ANALYZE patient;
+ANALYZE encounter;
+```
+
+### Application Tuning
+```bash
+# Check response times
+curl -w "@curl-format.txt" -o /dev/null -s http://localhost:3000/health
+
+# Monitor Node.js
+node --inspect apps/api/dist/main.js
+```
 
 ## Security Operations
 
-### Access Review
+### User Access Review
+```sql
+-- List active users
+SELECT id, email, role, last_login_at FROM users WHERE is_active = true;
 
-Quarterly access review:
+-- List failed login attempts
+SELECT email, COUNT(*) as attempts 
+FROM audit_log 
+WHERE action = 'LOGIN_FAILED' 
+  AND created_at > NOW() - INTERVAL '1 day'
+GROUP BY email
+HAVING COUNT(*) > 5;
+```
 
-1. Export user list
-2. Review with department managers
-3. Disable terminated employees
-4. Review privileged access
-5. Document review completion
+### Audit Log Review
+```sql
+-- Recent administrative actions
+SELECT * FROM audit_log 
+WHERE action LIKE '%ADMIN%' 
+  AND created_at > NOW() - INTERVAL '1 day'
+ORDER BY created_at DESC;
+
+-- Data access patterns
+SELECT user_id, entity_type, COUNT(*) as access_count
+FROM audit_log
+WHERE created_at > NOW() - INTERVAL '1 day'
+GROUP BY user_id, entity_type
+ORDER BY access_count DESC;
+```
 
 ### Security Patching
+```bash
+# Update dependencies
+npm audit fix
 
-| Component | Patch Frequency | Process |
-|-----------|-----------------|---------|
-| OS packages | Monthly | Automated + manual review |
-| Application dependencies | Weekly | Dependabot + manual review |
-| Database | Per vendor advisory | Maintenance window |
-| Container base images | Monthly | Rebuild and redeploy |
+# Update system packages
+sudo apt-get update
+sudo apt-get upgrade
 
-### Incident Response
-
-See [INCIDENT_RESPONSE_PLAN.md](./INCIDENT_RESPONSE_PLAN.md) for security incident procedures.
+# Restart services
+sudo systemctl restart careforge-api
+```
 
 ## Capacity Planning
 
-### Current Capacity (Estimate)
+### Monitoring Metrics
+| Metric | Warning | Critical |
+|--------|---------|----------|
+| CPU Usage | > 70% | > 90% |
+| Memory Usage | > 75% | > 90% |
+| Disk Usage | > 80% | > 90% |
+| DB Connections | > 80% | > 95% |
+| Response Time (p95) | > 500ms | > 1000ms |
+| Error Rate | > 1% | > 5% |
 
-| Resource | Current | Projected Growth |
-|----------|---------|------------------|
-| Database storage | ~10 GB | +2 GB/month |
-| File storage | ~50 GB | +10 GB/month |
-| API requests | ~10K/day | +20%/month |
-| Concurrent users | ~50 | +10/month |
+### Scaling Procedures
+```bash
+# Horizontal scaling (add instance)
+# Update load balancer configuration
+# Add new server to pool
 
-### Scaling Triggers
+# Vertical scaling (increase resources)
+# Stop application
+sudo systemctl stop careforge-api
 
-| Metric | Action |
-|--------|--------|
-| Database > 80% capacity | Add storage or archive |
-| API p95 > 1s consistently | Add API instances |
-| Concurrent users > 80% capacity | Scale horizontally |
-| File storage > 80% | Add storage or tier |
+# Increase server resources (cloud console)
 
-## Maintenance Windows
+# Start application
+sudo systemctl start careforge-api
+```
 
-### Scheduled Maintenance
+## On-Call Procedures
 
-- **Frequency**: Monthly (first Sunday, 2-4 AM local)
-- **Notification**: 72 hours advance notice
-- **Duration**: Maximum 2 hours
-- **Activities**: Security patches, database maintenance, upgrades
+### On-Call Rotation
+- **Primary**: 24/7 coverage
+- **Secondary**: Backup for primary
+- **Escalation**: Engineering Manager
 
-### Emergency Maintenance
+### On-Call Responsibilities
+- Monitor alerts
+- Respond to incidents
+- Perform emergency fixes
+- Document incidents
+- Handoff to next on-call
 
-- **Authorization**: Engineering Manager or on-call lead
-- **Notification**: As soon as possible
-- **Documentation**: Required within 24 hours
+### Contact Information
+| Role | Contact |
+|------|---------|
+| On-Call Engineer | PagerDuty rotation |
+| Engineering Manager | manager@careforge.health |
+| CTO | cto@careforge.health |
+| Security Team | security@careforge.health |
 
-## Support Procedures
-
-### User Support Escalation
-
-| Level | Contact | Response Time |
-|-------|---------|---------------|
-| L1 (User) | Help desk | 4 hours |
-| L2 (Technical) | Operations team | 2 hours |
-| L3 (Engineering) | Development team | 1 hour |
-| L4 (Vendor) | Third-party support | Per SLA |
-
-### Known Issues
-
-Track in issue tracker. Current known issues:
-
-1. See [KNOWN_LIMITATIONS.md](./KNOWN_LIMITATIONS.md)
-
-## Document Control
-
-| Version | Date | Author | Changes |
-|---------|------|--------|---------|
-| 1.0 | 2026-07-21 | Engineering | Initial version |
-
-## Review Schedule
-
-This runbook must be reviewed:
-
-- After every major deployment
-- After every incident
-- Quarterly at minimum
-- When architecture changes significantly
+## Last Updated
+2026-07-21

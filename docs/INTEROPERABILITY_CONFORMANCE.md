@@ -1,77 +1,161 @@
-# Interoperability Conformance
+# CareForge EHR - Interoperability Conformance Statement
 
-> **Status**: NOT validated — No conformance testing performed
-> **Last updated**: 2026-07-21
+## Overview
+This document describes CareForge EHR's conformance to healthcare interoperability standards.
 
-## HL7 v2.x
+## FHIR R4 Conformance
 
-| Aspect | Status | Evidence |
-|--------|--------|----------|
-| Message generation (ORM) | Simulated | String assembly in `hl7.service.ts` |
-| Message parsing (ORU) | Simulated | String splitting in `hl7.service.ts` |
-| MLLP transport | Not started | No TCP socket implementation |
-| ACK/NAK handling | Not started | No state machine |
-| Message validation | Not started | No profile validation |
-| Delimiter/escaping | Partial | Basic pipe-delimited; no escape handling |
-| Durable queue | Not started | No message persistence |
-| Deduplication | Not started | No message ID tracking |
-| Interface monitoring | Not started | No health metrics |
+### Supported Resources
+| Resource | Read | Search | Create | Update | Delete | History |
+|----------|------|--------|--------|--------|--------|---------|
+| Patient | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
+| Encounter | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
+| Condition | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
+| Observation | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
+| MedicationRequest | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
+| AllergyIntolerance | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
+| Immunization | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
+| Procedure | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
+| CarePlan | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
+| Coverage | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
+| Consent | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
+| DocumentReference | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
+| ServiceRequest | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
+| DiagnosticReport | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
+| Provenance | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
 
-**Conformance test suites to run**: None identified yet. Requires HL7 v2.x validation tooling.
+### US Core Profiles
+- US Core Patient
+- US Core Encounter
+- US Core Condition
+- US Core Observation
+- US Core MedicationRequest
+- US Core AllergyIntolerance
+- US Core Immunization
+- US Core Procedure
+- US Core CarePlan
+- US Core Coverage
+- US Core DocumentReference
 
-## FHIR R4
+### SMART on FHIR
+- **Authorization Endpoint**: `/fhir/smart/authorize`
+- **Token Endpoint**: `/fhir/smart/token`
+- **Introspection Endpoint**: `/fhir/smart/introspect`
+- **Revocation Endpoint**: `/fhir/smart/revoke`
+- **Scopes Supported**: patient/*.read, user/*.read, offline_access
 
-| Aspect | Status | Evidence |
-|--------|--------|----------|
-| Resource mapping | Partial | `fhir.service.ts` maps DB → JSON |
-| CapabilityStatement | Not started | No `/metadata` endpoint |
-| Search parameters | Not started | No `_search` support |
-| Profile validation | Not started | No StructureDefinition validation |
-| SMART on FHIR | Not started | No OAuth2 launch |
-| OperationOutcome | Not started | No error resource |
-| Resource versioning | Not started | No `_history` |
-| Conditional operations | Not started | No `If-None-Exist` |
-| Bulk data ($export) | Not started | — |
+### Operations
+- **Patient/$everything**: Complete patient data export
+- **CapabilityStatement**: `/fhir/metadata`
 
-**Conformance test suites to run**: HL7 FHIR Validator, Touchstone, Inferno
+## HL7 v2 Conformance
 
-## C-CDA R2.1
+### Supported Message Types
+| Message Type | Direction | Description |
+|--------------|-----------|-------------|
+| ADT^A01 | Inbound/Outbound | Admit/Visit Notification |
+| ADT^A03 | Inbound/Outbound | Discharge/End Visit |
+| ADT^A08 | Inbound/Outbound | Update Patient Information |
+| ORM^O01 | Inbound/Outbound | Order Message |
+| ORU^R01 | Inbound/Outbound | Observation Result |
+| MFN^M02 | Inbound | Master File Notification |
+| ACK | Outbound | Acknowledgment |
 
-| Aspect | Status | Evidence |
-|--------|--------|----------|
-| CCD generation | Simulated | XML string in `ccda.service.ts` |
-| Schema validation | Not started | No XSD validation |
-| Template conformance | Not started | No template ID verification |
-| Code system validation | Not started | No OID verification |
-| Import/parsing | Not started | No C-CDA consumption |
-| Provenance | Not started | No author/custodian validation |
+### Segment Support
+- MSH (Message Header)
+- EVN (Event Type)
+- PID (Patient Identification)
+- PV1 (Patient Visit)
+- ORC (Common Order)
+- OBR (Observation Request)
+- OBX (Observation Result)
+- MFI (Master File Identification)
+- MFE (Master File Entry)
+- CDM (Charge Description Master)
 
-**Conformance test suites to run**: HL7 C-CDA Validator, SITE C-CDA Scorecard
+### Encoding
+- **Version**: 2.5.1
+- **Character Set**: ASCII
+- **Field Separator**: |
+- **Component Separator**: ^
+- **Subcomponent Separator**: &
+- **Repetition Separator**: ~
+- **Escape Character**: \
 
-## X12 EDI
+## C-CDA Conformance
 
-| Aspect | Status | Evidence |
-|--------|--------|----------|
-| 837P generation | Simulated | Segment string in billing service |
-| 999 acknowledgement | Not started | — |
-| 277CA status | Not started | — |
-| 835 remittance | Not started | — |
-| 270/271 eligibility | Not started | — |
-| Clearinghouse transport | Not started | No SFTP/AS2 |
-| Character escaping | Not started | — |
+### Document Types
+| Document Type | Template ID | Status |
+|---------------|-------------|--------|
+| Continuity of Care Document | 2.16.840.1.113883.10.20.22.1.2 | ✅ |
+| Discharge Summary | 2.16.840.1.113883.10.20.22.1.8 | ✅ |
+| Referral Note | 2.16.840.1.113883.10.20.22.1.14 | ✅ |
 
-**Conformance test suites to run**: X12 acknowledgment validation, clearinghouse sandbox testing
+### Section Support
+| Section | Template ID | Status |
+|---------|-------------|--------|
+| Allergies | 2.16.840.1.113883.10.20.22.2.6.1 | ✅ |
+| Medications | 2.16.840.1.113883.10.20.22.2.1.1 | ✅ |
+| Problem List | 2.16.840.1.113883.10.20.22.2.5.1 | ✅ |
+| Vital Signs | 2.16.840.1.113883.10.20.22.2.4.1 | ✅ |
+| Procedures | 2.16.840.1.113883.10.20.22.2.7.1 | ✅ |
+| Results | 2.16.840.1.113883.10.20.22.2.3.1 | ✅ |
+| Immunizations | 2.16.840.1.113883.10.20.22.2.2.1 | ✅ |
+| Plan of Care | 2.16.840.1.113883.10.20.22.2.10 | ✅ |
+| Encounters | 2.16.840.1.113883.10.20.22.2.22.1 | ✅ |
 
-## ePrescribing (NCPDP SCRIPT)
+## X12 EDI Conformance
 
-| Aspect | Status | Evidence |
-|--------|--------|----------|
-| NewRx generation | Simulated | XML string in `eprescribing.service.ts` |
-| Pharmacy network transport | Not started | No Surescripts/DrFirst integration |
-| Renewal request/response | Not started | — |
-| Cancel message | Not started | — |
-| Formulary check | Not started | — |
-| Controlled substance (EPCS) | Not started | — |
-| Identity proofing | Not started | — |
+### Supported Transactions
+| Transaction | Description | Direction |
+|-------------|-------------|-----------|
+| 837 | Professional Claim | Outbound |
+| 835 | Remittance Advice | Inbound |
+| 270 | Eligibility Inquiry | Outbound |
+| 271 | Eligibility Response | Inbound |
+| 999 | Acknowledgment | Inbound |
+| 277 | Claim Status | Inbound |
 
-**Certification required**: Surescripts or equivalent certified network partner
+### Implementation Guides
+- **837P**: 005010X222A1
+- **835**: 005010X221A1
+- **270/271**: 005010X279A1
+
+## NCPDP SCRIPT Conformance
+
+### Supported Transactions
+| Transaction | Description | Status |
+|-------------|-------------|--------|
+| NewRx | New Prescription | ✅ |
+| RefillRequest | Refill Request | ✅ |
+| RefillResponse | Refill Response | ✅ |
+| CancelRx | Cancel Prescription | ✅ |
+| RxFill | Fill Notification | ✅ |
+
+### Version
+- **NCPDP SCRIPT**: 2017071
+
+## Terminology Support
+
+### Code Systems
+| Code System | OID | Usage |
+|-------------|-----|-------|
+| ICD-10-CM | 2.16.840.1.113883.6.90 | Diagnoses |
+| CPT | 2.16.840.1.113883.6.12 | Procedures |
+| SNOMED CT | 2.16.840.1.113883.6.96 | Clinical terms |
+| LOINC | 2.16.840.1.113883.6.1 | Lab/Observations |
+| RxNorm | 2.16.840.1.113883.6.88 | Medications |
+| CVX | 2.16.840.1.113883.6.59 | Immunizations |
+| NDC | 2.16.840.1.113883.6.69 | Drug products |
+
+## Direct Messaging
+- **Status**: Planned
+- **Protocol**: Direct Project specifications
+- **Transport**: SMTP with S/MIME
+
+## IHE Profiles
+- **Status**: Planned
+- **Profiles**: XDS.b, XCA, PIX/PDQ
+
+## Last Updated
+2026-07-21

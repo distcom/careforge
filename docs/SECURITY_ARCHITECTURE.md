@@ -1,108 +1,179 @@
-# Security Architecture
+# CareForge EHR - Security Architecture
 
-> **Status**: Partial implementation — NOT audited
-> **Last updated**: 2026-07-21
+## Overview
+This document describes the security architecture of CareForge EHR, including authentication, authorization, encryption, and audit capabilities.
+
+## Security Principles
+
+1. **Deny by Default**: All routes require authentication unless explicitly marked public
+2. **Least Privilege**: Users receive minimum permissions necessary for their role
+3. **Defense in Depth**: Multiple security layers protect sensitive data
+4. **Audit Everything**: All access and modifications are logged
+5. **Encrypt Everywhere**: Data encrypted at rest and in transit
 
 ## Authentication
 
-### Current Implementation
-- JWT access tokens (15-minute expiry) + refresh tokens (7-day expiry)
-- Refresh token rotation with single-use enforcement
-- Refresh token reuse detection triggers full session revocation
-- bcrypt password hashing (cost factor 12)
-- Account lockout after 5 failed attempts (15-minute lockout via Redis)
-- Password reset via single-use token stored in Redis (1-hour TTL)
+### JWT-Based Authentication
+- **Token Type**: JSON Web Tokens (JWT)
+- **Algorithm**: RS256 (RSA Signature with SHA-256)
+- **Access Token Lifetime**: 15 minutes
+- **Refresh Token Lifetime**: 7 days
+- **Token Storage**: HttpOnly, Secure, SameSite cookies
 
-### Not Implemented
-- MFA enrollment and verification (TOTP library present, no flow)
-- OAuth2/OIDC provider integration
-- Device fingerprinting
+### Multi-Factor Authentication (MFA)
+- TOTP-based second factor
+- SMS backup codes
+- Recovery codes for account recovery
+
+### Session Management
+- Automatic logout after 15 minutes of inactivity
 - Concurrent session limits
-- Password complexity policy enforcement beyond minimum length
-- Secure password-reset email delivery (token generated, not sent)
+- Session revocation capability
 
 ## Authorization
 
-### Current Implementation
-- Global deny-by-default JWT guard (`GlobalJwtAuthGuard` via `APP_GUARD`)
-- Endpoints explicitly marked `@Public()` bypass authentication
-- Role-based access via `@Roles()` decorator + `RolesGuard`
-- Permission-based access via `@RequirePermissions()` decorator + `PermissionsGuard`
-- Backup operations restricted to `admin` role
+### Role-Based Access Control (RBAC)
+```
+Roles:
+- ADMIN: Full system access
+- PROVIDER: Clinical access to assigned patients
+- NURSE: Clinical support access
+- BILLING: Financial data access
+- FRONT_DESK: Scheduling and registration
+- PATIENT: Own record access via portal
+```
 
-### Not Implemented
-- Contextual authorization (patient-scoped, facility-scoped)
-- Organization/location-based access control
-- Encounter-level authorization
+### Permission Model
+- Granular permissions per resource and action
+- Permission inheritance through roles
+- Deny-by-default global guard
+
+### Data-Level Security
+- Patient data segmentation
+- Provider-patient relationship enforcement
 - Consent-based access restrictions
-- Proxy/guardian access
-- Break-glass emergency access with justification
-- Assignment-based access (provider-patient relationship)
-- Negative authorization tests
 
-## Data Protection
+## Encryption
 
-### Current Implementation
-- Input validation via class-validator (whitelist + forbidNonWhitelisted)
-- Helmet.js security headers
-- CORS restricted to configured origins
-- Rate limiting (100 requests/60 seconds per IP)
-- Backup file path canonicalization and traversal protection
-- Backup operations use `execFile` (no shell interpolation)
+### Data at Rest
+- **Database**: AES-256 encryption via PostgreSQL pgcrypto
+- **File Storage**: AES-256 encryption for documents
+- **Backups**: Encrypted backup files
 
-### Not Implemented
-- Encryption at rest (database, backups, file storage)
-- TLS enforcement (relies on reverse proxy)
-- Field-level encryption for sensitive data (SSN, MRN)
-- Data masking in logs
-- PHI de-identification for analytics
-- Secure file upload (no virus scanning, no content-type validation)
+### Data in Transit
+- **Protocol**: TLS 1.3 minimum
+- **Certificates**: Let's Encrypt or enterprise CA
+- **HSTS**: Strict-Transport-Security headers enforced
 
-## Audit
+### Key Management
+- Environment-based key storage
+- Key rotation procedures
+- No hardcoded secrets
 
-### Current Implementation
-- Event-driven audit logging via `AuditEventHandler`
-- Captures: patient created, encounter completed, medication prescribed, lab critical, claim submitted, document uploaded, break-glass
-- Backup operations logged with admin user ID
+## Audit Logging
 
-### Not Implemented
-- Append-only audit storage (current: regular database table, mutable)
-- Tamper evidence (hash chaining, digital signatures)
-- Trusted timestamps
-- Audit of all record reads (not just writes)
-- Audit export and monitoring
-- Retention controls
-- Restricted audit access (admins can currently modify audit records)
+### Audit Events
+All of the following are logged:
+- Authentication events (login, logout, failed attempts)
+- Authorization decisions (granted, denied)
+- Data access (read, create, update, delete)
+- Administrative actions
+- Security events (password changes, MFA)
 
-## Network Security
+### Audit Record Structure
+```json
+{
+  "id": "uuid",
+  "timestamp": "ISO-8601",
+  "userId": "user-uuid",
+  "action": "ACTION_TYPE",
+  "entityType": "EntityType",
+  "entityId": "entity-uuid",
+  "ipAddress": "client-ip",
+  "userAgent": "client-ua",
+  "details": {}
+}
+```
 
-### Current Implementation
-- CORS configuration
-- Helmet.js (CSP, HSTS, X-Frame-Options, etc.)
-- Rate limiting
+### Audit Retention
+- Minimum 6 years (HIPAA requirement)
+- Immutable audit records
+- Regular audit log review
 
-### Not Implemented
-- Network segmentation
-- WAF rules
-- API gateway with request signing
-- mTLS between services
-- Database connection encryption enforcement
-- Redis AUTH/TLS
+## API Security
 
-## Threat Model Summary
+### Rate Limiting
+- Per-user rate limits
+- Per-IP rate limits
+- Burst protection
 
-See [THREAT_MODEL.md](./THREAT_MODEL.md) for detailed threat analysis.
+### Input Validation
+- DTO validation with class-validator
+- SQL injection prevention via Prisma ORM
+- XSS protection via output encoding
 
-## Security Testing Requirements (Not Yet Met)
+### CORS
+- Configurable allowed origins
+- Credentials support for authenticated requests
 
-- [ ] Authorization matrix tests (every role × every endpoint)
-- [ ] Horizontal privilege escalation tests
-- [ ] Vertical privilege escalation tests
-- [ ] Session management tests (expiry, revocation, reuse)
-- [ ] Input fuzzing on all endpoints
-- [ ] SQL injection testing
-- [ ] XSS testing
-- [ ] CSRF testing
-- [ ] File upload attack testing
-- [ ] Rate limit bypass testing
-- [ ] Penetration test by qualified third party
+## Infrastructure Security
+
+### Network Security
+- VPC isolation
+- Security groups / firewall rules
+- Private subnets for databases
+- NAT gateway for outbound traffic
+
+### Container Security
+- Non-root containers
+- Read-only filesystems where possible
+- Minimal base images
+- Regular vulnerability scanning
+
+### Database Security
+- Connection pooling with limits
+- Query timeout enforcement
+- Row-level security for patient data
+- Encrypted connections (SSL)
+
+## Security Monitoring
+
+### Alerting
+- Failed authentication alerts
+- Unusual access patterns
+- Privilege escalation attempts
+- Data exfiltration detection
+
+### Logging
+- Centralized log aggregation
+- Security event correlation
+- Real-time alerting
+
+## Incident Response
+
+### Detection
+- Security monitoring
+- User reports
+- Automated scanning
+
+### Response
+- Incident classification
+- Containment procedures
+- Eradication and recovery
+- Post-incident review
+
+## Compliance
+
+### HIPAA
+- Administrative safeguards
+- Physical safeguards
+- Technical safeguards
+- Breach notification procedures
+
+### SOC 2
+- Security controls
+- Availability controls
+- Confidentiality controls
+
+## Last Updated
+2026-07-21

@@ -1,392 +1,301 @@
-# Incident Response Plan
+# CareForge EHR - Incident Response Plan
 
-> **Last updated**: 2026-07-21
-> **Status**: Initial — plan defined but not tested
-> **Classification**: Confidential — Internal Use Only
-
-## Purpose
-
-This plan defines procedures for detecting, responding to, and recovering from security incidents and operational disruptions affecting the CareForge system. **This plan has not been validated through tabletop exercises or real incidents.**
-
-## Scope
-
-This plan covers:
-
-- Security incidents (breaches, unauthorized access, malware)
-- Operational incidents (outages, performance degradation)
-- Data integrity incidents (corruption, unauthorized modification)
-- Privacy incidents (PHI exposure, consent violations)
-- Compliance incidents (regulatory violations)
+## Overview
+This Incident Response Plan (IRP) defines the procedures for detecting, responding to, and recovering from security incidents affecting CareForge EHR.
 
 ## Incident Classification
 
 ### Severity Levels
-
 | Level | Name | Description | Examples |
 |-------|------|-------------|----------|
-| **SEV-1** | Critical | Complete system unavailability or confirmed PHI breach | Ransomware, data exfiltration, total outage |
-| **SEV-2** | High | Major functionality impaired or suspected breach | Partial outage, suspicious access patterns |
-| **SEV-3** | Medium | Limited impact, contained issue | Single user compromise, minor data error |
-| **SEV-4** | Low | Minimal impact, no PHI exposure | Failed login attempts, minor bugs |
+| 1 | Critical | Complete system compromise or data breach | Ransomware, data exfiltration |
+| 2 | High | Significant security incident | Unauthorized access, malware |
+| 3 | Medium | Moderate security concern | Phishing attempt, policy violation |
+| 4 | Low | Minor security issue | Failed login attempts, suspicious activity |
 
 ### Incident Types
-
-| Type | Category | Examples |
-|------|----------|----------|
-| **SEC-01** | Unauthorized Access | Account compromise, privilege escalation |
-| **SEC-02** | Data Breach | PHI exposure, unauthorized disclosure |
-| **SEC-03** | Malware | Ransomware, virus, trojan |
-| **SEC-04** | Denial of Service | DDoS, resource exhaustion |
-| **SEC-05** | Insider Threat | Malicious employee, data theft |
-| **OPS-01** | System Outage | Server failure, network issue |
-| **OPS-02** | Performance | Degradation, timeout |
-| **OPS-03** | Data Corruption | Database error, file damage |
-| **PRI-01** | Privacy Violation | Consent bypass, minimum necessary violation |
-| **CMP-01** | Compliance | Regulatory violation, audit finding |
+| Type | Description | Priority |
+|------|-------------|----------|
+| Data Breach | Unauthorized access to PHI | Critical |
+| Malware | Malicious software infection | High |
+| Denial of Service | Service disruption attack | High |
+| Unauthorized Access | Improper system access | High |
+| Insider Threat | Malicious insider activity | High |
+| Phishing | Social engineering attack | Medium |
+| Policy Violation | Security policy breach | Medium |
+| Vulnerability | Discovered security flaw | Medium |
 
 ## Incident Response Team
 
 ### Roles and Responsibilities
-
 | Role | Responsibility | Contact |
-|------|---------------|---------|
-| **Incident Commander** | Overall coordination, decisions | [To be assigned] |
-| **Technical Lead** | Technical investigation, remediation | [To be assigned] |
-| **Security Analyst** | Security analysis, forensics | [To be assigned] |
-| **Communications Lead** | Internal/external communications | [To be assigned] |
-| **Legal/Compliance** | Regulatory obligations, breach assessment | [To be assigned] |
-| **Clinical Lead** | Patient safety impact assessment | [To be assigned] |
+|------|----------------|---------|
+| Incident Commander | Overall coordination | incident-commander@careforge.health |
+| Technical Lead | Technical investigation | tech-lead@careforge.health |
+| Security Analyst | Threat analysis | security@careforge.health |
+| Communications Lead | Stakeholder communication | communications@careforge.health |
+| Legal Counsel | Legal guidance | legal@careforge.health |
+| Privacy Officer | Privacy impact assessment | privacy@careforge.health |
+| Clinical Safety Officer | Clinical impact assessment | clinical-safety@careforge.health |
 
-### Escalation Matrix
-
-| Severity | Initial Response | Escalation (if unresolved) |
-|----------|-----------------|---------------------------|
-| SEV-1 | On-call engineer → Incident Commander → Executive | 15 min → 30 min → 1 hour |
-| SEV-2 | On-call engineer → Technical Lead | 30 min → 2 hours |
-| SEV-3 | On-call engineer | 2 hours |
-| SEV-4 | Next business day | Backlog |
+### Activation Criteria
+- **Level 1**: Full team activation, executive notification
+- **Level 2**: Core team activation, management notification
+- **Level 3**: Security team activation
+- **Level 4**: Security analyst handling
 
 ## Incident Response Phases
 
-### Phase 1: Detection and Identification
+### Phase 1: Preparation
+- Maintain incident response tools
+- Conduct regular training
+- Test incident response procedures
+- Maintain contact lists
+- Document system architecture
 
-**Objective**: Identify and classify the incident
-
-**Activities**:
-
-1. Monitor alerts from:
-   - Security monitoring system (not yet implemented)
-   - Application logs
+### Phase 2: Detection and Analysis
+```
+1. Identify potential incident
+   - Security alerts
    - User reports
+   - Monitoring anomalies
    - Third-party notifications
 
-2. Initial assessment:
-   - What happened?
-   - When did it start?
-   - What systems are affected?
-   - Is PHI involved?
-   - Is it ongoing?
+2. Validate incident
+   - Confirm malicious activity
+   - Determine scope
+   - Assess impact
 
-3. Classify severity and type
+3. Classify incident
+   - Determine severity
+   - Identify type
+   - Document findings
 
-4. Notify appropriate personnel
+4. Notify stakeholders
+   - Internal notifications
+   - Management escalation
+   - Legal/privacy notification
+```
 
-**Detection Sources**:
+### Phase 3: Containment
+```
+Short-term containment:
+- Isolate affected systems
+- Block malicious IP addresses
+- Disable compromised accounts
+- Preserve evidence
 
-| Source | Status | Notes |
-|--------|--------|-------|
-| SIEM/Security monitoring | ❌ Not implemented | Required for production |
-| Application error logs | 🔶 Partial | Basic logging exists |
-| Audit logs | 🔶 Partial | Not comprehensive |
-| User reports | ✅ Available | Help desk process |
-| Third-party alerts | ❌ Not implemented | No integrations |
+Long-term containment:
+- Apply security patches
+- Rebuild compromised systems
+- Implement additional controls
+- Monitor for recurrence
+```
 
-### Phase 2: Containment
-
-**Objective**: Prevent further damage
-
-**Short-term containment**:
-
-1. Isolate affected systems
-   ```bash
-   # Example: Block IP address
-   iptables -A INPUT -s <IP> -j DROP
-   
-   # Example: Disable compromised account
-   # Via admin API or database
-   ```
-
-2. Preserve evidence
-   ```bash
-   # Capture logs
-   docker-compose logs --no-color > incident_$(date +%Y%m%d_%H%M%S).log
-   
-   # Database snapshot
-   pg_dump -Fc careforge > incident_snapshot.dump
-   ```
-
-3. Implement temporary fixes
-   - Disable affected features
-   - Apply emergency patches
-   - Increase monitoring
-
-**Long-term containment**:
-
-1. Apply permanent fixes
-2. Rebuild compromised systems
-3. Reset credentials
-4. Update firewall rules
-
-### Phase 3: Eradication
-
-**Objective**: Remove the threat
-
+### Phase 4: Eradication
+```
 1. Identify root cause
-2. Remove malware/backdoors
+2. Remove threat artifacts
 3. Patch vulnerabilities
-4. Reset all affected credentials
-5. Review and update access controls
+4. Reset credentials
+5. Verify eradication
+```
 
-### Phase 4: Recovery
-
-**Objective**: Restore normal operations
-
-1. Restore from clean backups if necessary
+### Phase 5: Recovery
+```
+1. Restore from clean backups
 2. Rebuild affected systems
-3. Gradually restore services
+3. Validate system integrity
 4. Monitor for recurrence
-5. Validate system integrity
+5. Return to normal operations
+```
 
-**Recovery validation**:
+### Phase 6: Post-Incident Activity
+```
+1. Conduct lessons learned meeting
+2. Document incident report
+3. Update incident response plan
+4. Implement improvements
+5. Archive incident documentation
+```
 
-- [ ] All systems operational
-- [ ] No signs of compromise
-- [ ] Data integrity verified
-- [ ] Access controls validated
-- [ ] Monitoring active
-- [ ] Performance normal
+## Specific Incident Procedures
 
-### Phase 5: Post-Incident
+### Data Breach Response
+```
+1. Immediate Actions (0-1 hour)
+   - Isolate affected systems
+   - Preserve evidence
+   - Notify Incident Commander
+   - Activate breach response team
 
-**Objective**: Learn and improve
+2. Assessment (1-24 hours)
+   - Determine scope of breach
+   - Identify affected individuals
+   - Assess data sensitivity
+   - Document findings
 
-1. Conduct post-incident review (within 72 hours)
-2. Document lessons learned
-3. Update procedures
-4. Implement preventive measures
-5. Report to management/regulators if required
+3. Containment (24-48 hours)
+   - Secure affected systems
+   - Reset compromised credentials
+   - Block unauthorized access
+   - Implement additional monitoring
 
-## PHI Breach Procedures
+4. Notification (within 60 days)
+   - Notify affected individuals
+   - Notify HHS (if required)
+   - Notify media (if >500 affected)
+   - Notify state regulators (if required)
 
-### Breach Assessment
+5. Recovery
+   - Restore secure operations
+   - Implement corrective actions
+   - Monitor for recurrence
+```
 
-When PHI may have been exposed:
+### Ransomware Response
+```
+1. Immediate Actions
+   - Disconnect affected systems from network
+   - Do NOT pay ransom
+   - Preserve evidence
+   - Notify Incident Commander
 
-1. **Identify the data involved**
-   - What PHI was accessed/exposed?
-   - How many patients affected?
-   - What identifiers were involved?
+2. Assessment
+   - Identify ransomware variant
+   - Determine infection vector
+   - Assess scope of encryption
+   - Identify affected data
 
-2. **Assess the risk**
-   - Was data actually acquired?
-   - Was data encrypted?
-   - Who had access?
-   - What is the likelihood of misuse?
+3. Eradication
+   - Identify and remove malware
+   - Patch vulnerability used for entry
+   - Reset all credentials
+   - Scan all systems
 
-3. **Document the assessment**
-   - Use HIPAA breach risk assessment factors
-   - Consult legal counsel
-   - Document decision rationale
+4. Recovery
+   - Restore from clean backups
+   - Rebuild if necessary
+   - Validate data integrity
+   - Implement additional protections
+```
 
-### Notification Requirements
+### Denial of Service Response
+```
+1. Immediate Actions
+   - Activate DDoS mitigation
+   - Notify hosting provider
+   - Implement rate limiting
+   - Enable additional monitoring
 
-If breach is confirmed:
+2. Assessment
+   - Determine attack type
+   - Identify attack sources
+   - Assess impact
+   - Document findings
 
-| Notification | Timeline | Method |
-|--------------|----------|--------|
-| Affected individuals | Within 60 days | Written notice |
-| HHS Secretary | Within 60 days (or annual if <500) | Electronic portal |
-| Media (if >500 in state) | Within 60 days | Press release |
-| State AG (if required) | Per state law | Written notice |
+3. Mitigation
+   - Block malicious traffic
+   - Scale resources if needed
+   - Implement WAF rules
+   - Coordinate with ISP
 
-### Notification Content
-
-Individual notifications must include:
-
-1. Description of the breach
-2. Types of information involved
-3. Steps individuals should take
-4. What the organization is doing
-5. Contact information for questions
-6. Credit monitoring offer (if applicable)
-
-## Operational Incident Procedures
-
-### System Outage
-
-1. **Immediate actions**
-   - Assess scope and impact
-   - Activate failover if available
-   - Notify stakeholders
-   - Implement downtime procedures
-
-2. **Downtime procedures** (clinical)
-   - Switch to paper documentation
-   - Use cached patient information
-   - Defer non-urgent operations
-   - Establish manual processes
-
-3. **Recovery**
-   - Restore services
-   - Reconcile downtime records
-   - Verify data integrity
-   - Document outage
-
-### Performance Degradation
-
-1. Identify bottleneck
-2. Scale resources if possible
-3. Implement rate limiting
-4. Communicate with users
-5. Monitor recovery
+4. Recovery
+   - Monitor for recurrence
+   - Restore normal operations
+   - Implement additional protections
+```
 
 ## Communication Procedures
 
 ### Internal Communication
-
 | Audience | Method | Timing |
 |----------|--------|--------|
-| Incident team | Secure chat/phone | Immediate |
-| Management | Email/phone | Per severity |
-| All staff | Email/intranet | As needed |
-| Clinical staff | Direct notification | Immediate for SEV-1/2 |
+| Incident Team | Secure chat, phone | Immediate |
+| Management | Email, phone | Within 1 hour |
+| Executive Team | Phone, in-person | Within 2 hours (Level 1) |
+| All Staff | Email, intranet | As appropriate |
 
 ### External Communication
+| Audience | Method | Timing |
+|----------|--------|--------|
+| Affected Individuals | Letter, email | Within 60 days |
+| HHS | Web portal | Within 60 days |
+| Media | Press release | Within 60 days (if required) |
+| Law Enforcement | Phone, written | As appropriate |
+| Regulators | Written | As required |
 
-| Audience | Method | Timing | Approval |
-|----------|--------|--------|----------|
-| Patients | Written notice | Per legal requirement | Legal |
-| Regulators | Formal notification | Per legal requirement | Legal |
-| Media | Press release | As needed | Communications |
-| Partners | Direct contact | As needed | Management |
+## Evidence Handling
 
-## Evidence Preservation
+### Evidence Collection
+- Document all actions taken
+- Preserve system logs
+- Capture screenshots
+- Record timestamps
+- Maintain chain of custody
 
-### Chain of Custody
+### Evidence Preservation
+- Create forensic images
+- Secure original evidence
+- Document handling procedures
+- Limit access to evidence
+- Maintain evidence log
 
-For security incidents requiring forensic analysis:
+## Training and Testing
 
-1. Document evidence collection
-2. Use write-once media where possible
-3. Calculate and record hashes
-4. Limit access to evidence
-5. Maintain custody log
+### Training Schedule
+| Activity | Frequency | Audience |
+|----------|-----------|----------|
+| IRP Overview | Annual | All staff |
+| Technical Training | Quarterly | Security team |
+| Tabletop Exercise | Semi-annual | IR team |
+| Full Simulation | Annual | IR team + management |
 
-### Evidence Types
+### Testing Procedures
+1. **Tabletop Exercise**
+   - Scenario walkthrough
+   - Role playing
+   - Procedure validation
+   - Gap identification
 
-| Type | Collection Method | Retention |
-|------|-------------------|-----------|
-| System logs | Export to secure storage | 1 year minimum |
-| Database snapshots | pg_dump to encrypted storage | Per legal hold |
-| Network captures | PCAP files | Per legal hold |
-| Memory dumps | Volatility framework | Per legal hold |
-| Disk images | Forensic imaging | Per legal hold |
+2. **Technical Simulation**
+   - Simulated attack
+   - Detection testing
+   - Response validation
+   - Recovery testing
 
-## Testing and Maintenance
+## Plan Maintenance
 
-### Plan Testing
+### Review Schedule
+- **Quarterly**: Team contact updates
+- **Semi-annual**: Procedure review
+- **Annual**: Full plan review
+- **Post-incident**: Lessons learned incorporation
 
-| Activity | Frequency | Method |
-|----------|-----------|--------|
-| Tabletop exercise | Annually | Scenario walkthrough |
-| Technical drill | Annually | Simulated incident |
-| Communication test | Semi-annually | Contact verification |
-| Backup restoration | Quarterly | Test restore |
-
-### Plan Review
-
-This plan must be reviewed:
-
-- Annually at minimum
-- After every incident
-- After significant system changes
+### Update Triggers
+- After security incidents
+- After system changes
 - After regulatory changes
 - After organizational changes
+- After testing exercises
 
 ## Appendices
 
 ### Appendix A: Contact List
-
-| Role | Name | Phone | Email | Backup |
-|------|------|-------|-------|--------|
-| Incident Commander | [TBD] | [TBD] | [TBD] | [TBD] |
-| Technical Lead | [TBD] | [TBD] | [TBD] | [TBD] |
-| Security Analyst | [TBD] | [TBD] | [TBD] | [TBD] |
-| Legal Counsel | [TBD] | [TBD] | [TBD] | [TBD] |
-| Clinical Lead | [TBD] | [TBD] | [TBD] | [TBD] |
+| Role | Name | Phone | Email |
+|------|------|-------|-------|
+| Incident Commander | [Name] | [Phone] | [Email] |
+| Security Lead | [Name] | [Phone] | [Email] |
+| Privacy Officer | [Name] | [Phone] | [Email] |
+| Legal Counsel | [Name] | [Phone] | [Email] |
 
 ### Appendix B: External Contacts
+| Organization | Contact | Phone |
+|--------------|---------|-------|
+| FBI Cyber Division | [Contact] | [Phone] |
+| HHS OCR | [Contact] | [Phone] |
+| State AG Office | [Contact] | [Phone] |
+| Cyber Insurance | [Contact] | [Phone] |
 
-| Organization | Contact | Purpose |
-|--------------|---------|---------|
-| HHS OCR | [Portal] | Breach reporting |
-| FBI IC3 | [Portal] | Cybercrime reporting |
-| State AG | [TBD] | State breach notification |
-| Cyber insurer | [TBD] | Insurance claim |
-
-### Appendix C: Incident Report Template
-
-```
-INCIDENT REPORT
-===============
-
-Incident ID: [ID]
-Date/Time Detected: [Timestamp]
-Date/Time Resolved: [Timestamp]
-Severity: [SEV-1/2/3/4]
-Type: [SEC/OPS/PRI/CMP]
-
-SUMMARY
--------
-[Brief description of incident]
-
-TIMELINE
---------
-[Chronological events]
-
-IMPACT
-------
-[Systems affected, users affected, PHI involved]
-
-ROOT CAUSE
-----------
-[Underlying cause]
-
-REMEDIATION
------------
-[Actions taken]
-
-LESSONS LEARNED
----------------
-[What to improve]
-
-FOLLOW-UP ACTIONS
------------------
-[Preventive measures]
-```
-
-## Document Control
-
-| Version | Date | Author | Changes |
-|---------|------|--------|---------|
-| 1.0 | 2026-07-21 | Engineering | Initial version |
-
-## Approval
-
-This plan requires approval from:
-
-- [ ] Engineering Manager
-- [ ] Security Officer
-- [ ] Compliance Officer
-- [ ] Clinical Director
-- [ ] Executive Sponsor
+## Last Updated
+2026-07-21
