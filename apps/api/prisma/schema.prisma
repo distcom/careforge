@@ -74,6 +74,9 @@ model User {
   accessOverrides AccessOverride[]
   acknowledgedAlerts ClinicalAlert[] @relation("AlertAcknowledger")
   signedPrescriptions Prescription[] @relation("SignedPrescriptions")
+  codedCharges Charge[] @relation("CodedCharges")
+  reviewedCharges Charge[] @relation("ReviewedCharges")
+  approvedCharges Charge[] @relation("ApprovedCharges")
 
   @@map("users")
 }
@@ -1130,24 +1133,42 @@ model Referral {
 // ============================================
 
 model Charge {
-  id          String   @id @default(uuid())
-  patientId   String   @map("patient_id")
-  encounterId String?  @map("encounter_id")
-  providerId  String?  @map("provider_id")
-  cptCode     String   @map("cpt_code")
-  description String
-  modifiers   String?
-  units       Int      @default(1)
-  fee         Decimal  @db.Decimal(10, 2)
-  status      String   @default("BILLED")
-  serviceDate DateTime @map("service_date")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id              String   @id @default(uuid())
+  patientId       String   @map("patient_id")
+  encounterId     String?  @map("encounter_id")
+  providerId      String?  @map("provider_id")
+  cptCode         String   @map("cpt_code")
+  description     String
+  modifiers       String?
+  units           Int      @default(1)
+  fee             Decimal  @db.Decimal(10, 2)
+  status          String   @default("DRAFT")
+  serviceDate     DateTime @map("service_date")
+  // Coding workflow
+  icd10Codes      String?  @map("icd10_codes") // Comma-separated ICD-10 codes
+  codingStatus    String   @default("PENDING") @map("coding_status") // PENDING, CODED, REVIEWED, APPROVED, REJECTED
+  codedById       String?  @map("coded_by_id")
+  codedAt         DateTime? @map("coded_at")
+  reviewedById    String?  @map("reviewed_by_id")
+  reviewedAt      DateTime? @map("reviewed_at")
+  approvedById    String?  @map("approved_by_id")
+  approvedAt      DateTime? @map("approved_at")
+  rejectionReason String?  @map("rejection_reason")
+  // Charge capture
+  captureMethod   String?  @map("capture_method") // MANUAL, AUTOMATED, IMPORTED
+  sourceDocument  String?  @map("source_document")
+  notes           String?
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
-  patient     Patient    @relation(fields: [patientId], references: [id])
-  encounter   Encounter? @relation(fields: [encounterId], references: [id])
+  patient         Patient    @relation(fields: [patientId], references: [id])
+  encounter       Encounter? @relation(fields: [encounterId], references: [id])
+  codedBy         User?      @relation("CodedCharges", fields: [codedById], references: [id])
+  reviewedBy      User?      @relation("ReviewedCharges", fields: [reviewedById], references: [id])
+  approvedBy      User?      @relation("ApprovedCharges", fields: [approvedById], references: [id])
 
   @@index([patientId])
+  @@index([codingStatus])
   @@map("charges")
 }
 

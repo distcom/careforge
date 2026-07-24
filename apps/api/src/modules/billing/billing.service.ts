@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../infrastructure/database/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { PaginationQuery, PaginatedResult } from '../../common/dto/pagination.dto';
@@ -14,6 +14,22 @@ export interface CreateChargeDto {
   units?: number;
   fee: number;
   serviceDate: string;
+  icd10Codes?: string;
+  captureMethod?: 'MANUAL' | 'AUTOMATED' | 'IMPORTED';
+  sourceDocument?: string;
+  notes?: string;
+}
+
+export interface CodeChargeDto {
+  icd10Codes: string;
+  modifiers?: string;
+  notes?: string;
+}
+
+export interface ReviewChargeDto {
+  approved: boolean;
+  rejectionReason?: string;
+  notes?: string;
 }
 
 export interface CreatePaymentDto {
@@ -26,6 +42,15 @@ export interface CreatePaymentDto {
   notes?: string;
 }
 
+const CODING_STATUS_TRANSITIONS: Record<string, string[]> = {
+  PENDING: ['CODED'],
+  CODED: ['REVIEWED', 'PENDING'],
+  REVIEWED: ['APPROVED', 'REJECTED'],
+  APPROVED: ['BILLED'],
+  REJECTED: ['PENDING'],
+  BILLED: [],
+};
+
 @Injectable()
 export class BillingService {
   private readonly logger = new Logger(BillingService.name);
@@ -36,10 +61,11 @@ export class BillingService {
   ) {}
 
   // Charges
-  async findCharges(query: PaginationQuery & { patientId?: string; status?: string }): Promise<PaginatedResult<any>> {
+  async findCharges(query: PaginationQuery & { patientId?: string; status?: string; codingStatus?: string }): Promise<PaginatedResult<any>> {
     const where: any = {};
     if (query.patientId) where.patientId = query.patientId;
     if (query.status) where.status = query.status;
+    if (query.codingStatus) where.codingStatus = query.codingStatus;
 
     const [charges, total] = await Promise.all([
       this.prisma.charge.findMany({
@@ -50,6 +76,9 @@ export class BillingService {
         include: {
           patient: { select: { id: true, firstName: true, lastName: true } },
           encounter: { select: { id: true, type: true } },
+          codedBy: { select: { firstName: true, lastName: true } },
+          reviewedBy: { select: { firstName: true, lastName: true } },
+          approvedBy: { select: { firstName: true, lastName: true } },
         },
       }),
       this.prisma.charge.count({ where }),
@@ -69,6 +98,14 @@ export class BillingService {
         units: dto.units || 1,
         fee: dto.fee,
         serviceDate: new Date(dto.serviceDate),
+        icd10Codes: dto.icd10Codes,
+        captureMethod: dto.captureMethod || 'MANUAL',
+        sourceDocument: dto.sourceDocument,
+        notes: dto.notes,
+        status: 'DRAFT',
+        codingStatus: dto.icd10Codes ? 'CODED' : 'PENDING',
+        codedById: dto.icd10Codes ? userId : null,
+        codedAt: dto.icd10Codes ? new Date() : null,
       },
     });
 
@@ -81,10 +118,194 @@ export class BillingService {
         patientId: dto.patientId,
         cptCode: dto.cptCode,
         fee: dto.fee,
+        captureMethod: dto.captureMethod,
       },
     });
 
     return charge;
+  }
+
+  async codeCharge(id: string, dto: CodeChargeDto, userId?: string) {
+    const charge = await this.prisma.charge.findUnique({ where: { id } });
+    if (!charge) throw new NotFoundException('Charge not found');
+
+    if (charge.codingStatus !== 'PENDING') {
+      throw new BadRequestException('Charge must be in PENDING status to code');
+    }
+
+    const updated = await this.prisma.charge.update({
+      where: { id },
+      data: {
+        icd10Codes: dto.icd10Codes,
+        modifiers: dto.modifiers,
+        notes: dto.notes,
+        codingStatus: 'CODED',
+        codedById: userId,
+        codedAt: new Date(),
+      },
+    });
+
+    await this.auditService.log({
+      action: 'CHARGE_CODED',
+      entityType: 'Charge',
+      entityId: id,
+      userId,
+      details: {
+        patientId: charge.patientId,
+        cptCode: charge.cptCode,
+        icd10Codes: dto.icd10Codes,
+      },
+    });
+
+    return updated;
+  }
+
+  async reviewCharge(id: string, dto: ReviewChargeDto, userId?: string) {
+    const charge = await this.prisma.charge.findUnique({ where: { id } });
+    if (!charge) throw new NotFoundException('Charge not found');
+
+    if (charge.codingStatus !== 'CODED') {
+      throw new BadRequestException('Charge must be CODED before review');
+    }
+
+    const newStatus = dto.approved ? 'REVIEWED' : 'REJECTED';
+
+    const updated = await this.prisma.charge.update({
+      where: { id },
+      data: {
+        codingStatus: newStatus,
+        reviewedById: userId,
+        reviewedAt: new Date(),
+        rejectionReason: dto.approved ? null : dto.rejectionReason,
+        notes: dto.notes ? `${charge.notes || ''}\n[REVIEW] ${dto.notes}` : charge.notes,
+      },
+    });
+
+    await this.auditService.log({
+      action: dto.approved ? 'CHARGE_REVIEW_APPROVED' : 'CHARGE_REVIEW_REJECTED',
+      entityType: 'Charge',
+      entityId: id,
+      userId,
+      details: {
+        patientId: charge.patientId,
+        cptCode: charge.cptCode,
+        rejectionReason: dto.rejectionReason,
+      },
+    });
+
+    return updated;
+  }
+
+  async approveCharge(id: string, userId?: string) {
+    const charge = await this.prisma.charge.findUnique({ where: { id } });
+    if (!charge) throw new NotFoundException('Charge not found');
+
+    if (charge.codingStatus !== 'REVIEWED') {
+      throw new BadRequestException('Charge must be REVIEWED before approval');
+    }
+
+    const updated = await this.prisma.charge.update({
+      where: { id },
+      data: {
+        codingStatus: 'APPROVED',
+        approvedById: userId,
+        approvedAt: new Date(),
+      },
+    });
+
+    await this.auditService.log({
+      action: 'CHARGE_APPROVED',
+      entityType: 'Charge',
+      entityId: id,
+      userId,
+      details: { patientId: charge.patientId, cptCode: charge.cptCode },
+    });
+
+    return updated;
+  }
+
+  async markChargeBilled(id: string, userId?: string) {
+    const charge = await this.prisma.charge.findUnique({ where: { id } });
+    if (!charge) throw new NotFoundException('Charge not found');
+
+    if (charge.codingStatus !== 'APPROVED') {
+      throw new BadRequestException('Charge must be APPROVED before billing');
+    }
+
+    const updated = await this.prisma.charge.update({
+      where: { id },
+      data: {
+        codingStatus: 'BILLED',
+        status: 'BILLED',
+      },
+    });
+
+    await this.auditService.log({
+      action: 'CHARGE_BILLED',
+      entityType: 'Charge',
+      entityId: id,
+      userId,
+      details: { patientId: charge.patientId, cptCode: charge.cptCode },
+    });
+
+    return updated;
+  }
+
+  async getPendingCoding(query: PaginationQuery): Promise<PaginatedResult<any>> {
+    const where = { codingStatus: 'PENDING' };
+    const [charges, total] = await Promise.all([
+      this.prisma.charge.findMany({
+        where,
+        skip: query.skip,
+        take: query.limit,
+        orderBy: { serviceDate: 'asc' },
+        include: {
+          patient: { select: { firstName: true, lastName: true, dateOfBirth: true } },
+          encounter: { select: { type: true, chiefComplaint: true } },
+        },
+      }),
+      this.prisma.charge.count({ where }),
+    ]);
+    return new PaginatedResult(charges, total, query.page, query.limit);
+  }
+
+  async getChargesForReview(query: PaginationQuery): Promise<PaginatedResult<any>> {
+    const where = { codingStatus: 'CODED' };
+    const [charges, total] = await Promise.all([
+      this.prisma.charge.findMany({
+        where,
+        skip: query.skip,
+        take: query.limit,
+        orderBy: { codedAt: 'asc' },
+        include: {
+          patient: { select: { firstName: true, lastName: true } },
+          codedBy: { select: { firstName: true, lastName: true } },
+        },
+      }),
+      this.prisma.charge.count({ where }),
+    ]);
+    return new PaginatedResult(charges, total, query.page, query.limit);
+  }
+
+  async getCodingSummary(userId?: string) {
+    const [pending, coded, reviewed, approved, rejected, billed] = await Promise.all([
+      this.prisma.charge.count({ where: { codingStatus: 'PENDING' } }),
+      this.prisma.charge.count({ where: { codingStatus: 'CODED' } }),
+      this.prisma.charge.count({ where: { codingStatus: 'REVIEWED' } }),
+      this.prisma.charge.count({ where: { codingStatus: 'APPROVED' } }),
+      this.prisma.charge.count({ where: { codingStatus: 'REJECTED' } }),
+      this.prisma.charge.count({ where: { codingStatus: 'BILLED' } }),
+    ]);
+
+    await this.auditService.log({
+      action: 'CODING_SUMMARY_ACCESSED',
+      entityType: 'Charge',
+      entityId: 'summary',
+      userId,
+      details: { pending, coded, reviewed, approved, rejected, billed },
+    });
+
+    return { pending, coded, reviewed, approved, rejected, billed, total: pending + coded + reviewed + approved + rejected + billed };
   }
 
   // Claims
