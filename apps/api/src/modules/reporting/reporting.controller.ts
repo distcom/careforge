@@ -1,86 +1,87 @@
-import { Controller, Get, Post, Query, Body, Res, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import { Response } from 'express';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { ReportingService } from './reporting.service';
-import { ReportExportService, ReportExportOptions } from './report-export.service';
-import { Roles } from '../../common/decorators/auth.decorator';
+import { ReportingService, DateRange } from './reporting.service';
+import { RequirePermissions } from '../../common/decorators/auth.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
-@ApiTags('reports')
+@ApiTags('reporting')
 @ApiBearerAuth()
 @UseGuards(AuthGuard('jwt'))
 @Controller('reports')
 export class ReportingController {
-  constructor(
-    private reportingService: ReportingService,
-    private reportExportService: ReportExportService,
-  ) {}
+  constructor(private reportingService: ReportingService) {}
 
   @Get('dashboard')
   @ApiOperation({ summary: 'Get dashboard statistics' })
-  getDashboardStats() {
-    return this.reportingService.getDashboardStats();
+  @RequirePermissions('reporting:read')
+  getDashboardStats(@CurrentUser() user: any) {
+    return this.reportingService.getDashboardStats(user?.id);
   }
 
   @Get('patient-census')
   @ApiOperation({ summary: 'Get patient census report' })
-  getPatientCensus(@Query('dateFrom') dateFrom?: string, @Query('dateTo') dateTo?: string) {
-    return this.reportingService.getPatientCensus(dateFrom, dateTo);
+  @RequirePermissions('reporting:read')
+  getPatientCensus(@Query() query: DateRange, @CurrentUser() user: any) {
+    return this.reportingService.getPatientCensus(query, user?.id);
+  }
+
+  @Get('clinical-summary')
+  @ApiOperation({ summary: 'Get clinical summary report' })
+  @RequirePermissions('reporting:read')
+  getClinicalSummary(@Query() query: DateRange, @CurrentUser() user: any) {
+    return this.reportingService.getClinicalSummary(query, user?.id);
+  }
+
+  @Get('provider-productivity')
+  @ApiOperation({ summary: 'Get provider productivity report' })
+  @RequirePermissions('reporting:read')
+  getProviderProductivity(
+    @Query() query: DateRange & { providerId?: string },
+    @CurrentUser() user: any,
+  ) {
+    return this.reportingService.getProviderProductivity(query.providerId, query, user?.id);
   }
 
   @Get('revenue')
   @ApiOperation({ summary: 'Get revenue report' })
-  @Roles('admin', 'billing')
-  getRevenueReport(@Query('dateFrom') dateFrom?: string, @Query('dateTo') dateTo?: string) {
-    return this.reportingService.getRevenueReport(dateFrom, dateTo);
-  }
-
-  @Get('encounters')
-  @ApiOperation({ summary: 'Get encounter report' })
-  getEncounterReport(@Query('dateFrom') dateFrom?: string, @Query('dateTo') dateTo?: string) {
-    return this.reportingService.getEncounterReport(dateFrom, dateTo);
+  @RequirePermissions('financial:read')
+  getRevenueReport(@Query() query: DateRange, @CurrentUser() user: any) {
+    return this.reportingService.getRevenueReport(query, user?.id);
   }
 
   @Get('accounts-receivable')
   @ApiOperation({ summary: 'Get accounts receivable aging report' })
-  @Roles('admin', 'billing')
-  getAccountsReceivable() {
-    return this.reportingService.getAccountsReceivable();
+  @RequirePermissions('financial:read')
+  getAccountsReceivable(@CurrentUser() user: any) {
+    return this.reportingService.getAccountsReceivable(user?.id);
   }
 
-  @Post('export/patient-roster')
-  @ApiOperation({ summary: 'Export patient roster as CSV/PDF' })
-  @Roles('admin', 'provider')
-  async exportPatientRoster(@Body() options: ReportExportOptions, @Res() res: Response) {
-    const result = await this.reportExportService.exportPatientRoster(options);
-    res.set({ 'Content-Type': result.mimeType, 'Content-Disposition': `attachment; filename="${result.filename}"` });
-    res.send(result.content);
+  @Get('claims')
+  @ApiOperation({ summary: 'Get claims report' })
+  @RequirePermissions('financial:read')
+  getClaimsReport(@Query() query: DateRange, @CurrentUser() user: any) {
+    return this.reportingService.getClaimsReport(query, user?.id);
   }
 
-  @Post('export/financial')
-  @ApiOperation({ summary: 'Export financial summary report' })
-  @Roles('admin', 'billing')
-  async exportFinancial(@Body() options: ReportExportOptions, @Res() res: Response) {
-    const result = await this.reportExportService.exportFinancialSummary(options);
-    res.set({ 'Content-Type': result.mimeType, 'Content-Disposition': `attachment; filename="${result.filename}"` });
-    res.send(result.content);
+  @Get('appointment-utilization')
+  @ApiOperation({ summary: 'Get appointment utilization report' })
+  @RequirePermissions('reporting:read')
+  getAppointmentUtilization(@Query() query: DateRange, @CurrentUser() user: any) {
+    return this.reportingService.getAppointmentUtilization(query, user?.id);
   }
 
-  @Post('export/encounters')
-  @ApiOperation({ summary: 'Export encounter report' })
-  @Roles('admin', 'provider')
-  async exportEncounters(@Body() options: ReportExportOptions, @Res() res: Response) {
-    const result = await this.reportExportService.exportEncounterReport(options);
-    res.set({ 'Content-Type': result.mimeType, 'Content-Disposition': `attachment; filename="${result.filename}"` });
-    res.send(result.content);
+  @Get('lab-turnaround')
+  @ApiOperation({ summary: 'Get lab turnaround report' })
+  @RequirePermissions('reporting:read')
+  getLabTurnaround(@Query() query: DateRange, @CurrentUser() user: any) {
+    return this.reportingService.getLabTurnaround(query, user?.id);
   }
 
-  @Post('export/immunizations')
-  @ApiOperation({ summary: 'Export immunization registry report' })
-  @Roles('admin', 'provider')
-  async exportImmunizations(@Body() options: ReportExportOptions, @Res() res: Response) {
-    const result = await this.reportExportService.exportImmunizationReport(options);
-    res.set({ 'Content-Type': result.mimeType, 'Content-Disposition': `attachment; filename="${result.filename}"` });
-    res.send(result.content);
+  @Get('encounters')
+  @ApiOperation({ summary: 'Get encounter report' })
+  @RequirePermissions('reporting:read')
+  getEncounterReport(@Query() query: DateRange, @CurrentUser() user: any) {
+    return this.reportingService.getEncounterReport(query, user?.id);
   }
 }
