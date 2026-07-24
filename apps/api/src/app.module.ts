@@ -46,6 +46,7 @@ import { DataMigrationModule } from './modules/data-migration/data-migration.mod
 import { Hl7v2Module } from './modules/hl7v2/hl7v2.module';
 import { X12EdiModule } from './modules/x12-edi/x12-edi.module';
 import { CCdaModule } from './modules/c-cda/c-cda.module';
+import { I18nModule } from './modules/i18n/i18n.module';
 
 @Module({
   imports: [
@@ -107,6 +108,7 @@ import { CCdaModule } from './modules/c-cda/c-cda.module';
     Hl7v2Module,
     X12EdiModule,
     CCdaModule,
+    I18nModule,
   ],
   providers: [
     // SECURITY: Deny-by-default — all routes require JWT unless @Public()
