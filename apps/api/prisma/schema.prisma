@@ -58,6 +58,9 @@ model User {
   createdCarePlans CarePlan[]  @relation("CarePlanCreator")
   assignedInterventions CarePlanIntervention[] @relation("InterventionAssignee")
   carePlanTeams CarePlanTeamMember[] @relation("CarePlanTeam")
+  // Procedure relations
+  performedProcedures Procedure[] @relation("ProcedurePerformer")
+  orderedProcedures Procedure[] @relation("ProcedureOrderer")
 
   @@map("users")
 }
@@ -495,6 +498,7 @@ model Encounter {
   vitalSigns      VitalSign[]
   charges         Charge[]
   clinicalNotes   ClinicalNote[]
+  procedureRecords Procedure[]
 
   @@index([patientId])
   @@index([providerId])
@@ -803,26 +807,47 @@ model LabOrderItem {
 model Procedure {
   id             String    @id @default(uuid())
   patientId      String    @map("patient_id")
+  encounterId    String?   @map("encounter_id")
   cptCode        String?   @map("cpt_code")
+  icd10Codes     String?   @map("icd10_codes")
   name           String
   description    String?
-  status         String    @default("COMPLETED")
+  status         String    @default("SCHEDULED") // SCHEDULED, IN_PROGRESS, COMPLETED, CANCELLED, POSTPONED
+  scheduledAt    DateTime? @map("scheduled_at")
   performedAt    DateTime? @map("performed_at")
+  completedAt    DateTime? @map("completed_at")
+  cancelledAt    DateTime? @map("cancelled_at")
+  cancelReason   String?   @map("cancel_reason")
   performedById  String?   @map("performed_by_id")
+  orderedById    String?   @map("ordered_by_id")
+  assistantIds   String?   @map("assistant_ids") // JSON array of user IDs
   facility       String?
+  location       String?   // Specific room/OR
   preOpNotes     String?   @map("pre_op_notes")
   postOpNotes    String?   @map("post_op_notes")
+  operativeNotes String?   @map("operative_notes")
   complications  String?
   anesthesia     String?
-  laterality     String?
+  anesthesiaType String?   @map("anesthesia_type") // LOCAL, REGIONAL, GENERAL, SEDATION
+  laterality     String?   // LEFT, RIGHT, BILATERAL
+  specimenCollected Boolean @default(false) @map("specimen_collected")
+  specimenNotes  String?   @map("specimen_notes")
+  pathologyOrdered Boolean @default(false) @map("pathology_ordered")
+  estimatedDuration Int?   @map("estimated_duration") // minutes
+  actualDuration Int?      @map("actual_duration") // minutes
   notes          String?
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
   deletedAt      DateTime? @map("deleted_at")
 
   patient        Patient   @relation(fields: [patientId], references: [id])
+  encounter      Encounter? @relation(fields: [encounterId], references: [id])
+  performedBy    User?     @relation("ProcedurePerformer", fields: [performedById], references: [id])
+  orderedBy      User?     @relation("ProcedureOrderer", fields: [orderedById], references: [id])
 
   @@index([patientId])
+  @@index([status])
+  @@index([scheduledAt])
   @@map("procedures")
 }
 
