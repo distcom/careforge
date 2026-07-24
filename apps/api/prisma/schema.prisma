@@ -65,6 +65,8 @@ model User {
   uploadedDocuments ClinicalDocument[] @relation("DocumentUploader")
   reviewedDocuments ClinicalDocument[] @relation("DocumentReviewer")
   signedDocuments ClinicalDocument[] @relation("DocumentSigner")
+  // Insurance relations
+  verifiedInsurances PatientInsurance[] @relation("InsuranceVerifier")
 
   @@map("users")
 }
@@ -301,12 +303,30 @@ model PatientInsurance {
   isActive        Boolean  @default(true) @map("is_active")
   effectiveDate   DateTime? @map("effective_date")
   terminationDate DateTime? @map("termination_date")
+  // Eligibility tracking
+  eligibilityStatus String? @map("eligibility_status") // UNKNOWN, VERIFIED, INELIGIBLE, PENDING
+  eligibilityVerifiedAt DateTime? @map("eligibility_verified_at")
+  eligibilityVerifiedById String? @map("eligibility_verified_by_id")
+  eligibilityNotes String? @map("eligibility_notes")
+  // Cost sharing
+  copayAmount     Decimal? @db.Decimal(10, 2) @map("copay_amount")
+  coinsurancePercent Decimal? @db.Decimal(5, 2) @map("coinsurance_percent")
+  deductibleAmount Decimal? @db.Decimal(10, 2) @map("deductible_amount")
+  deductibleMet   Decimal? @db.Decimal(10, 2) @map("deductible_met")
+  outOfPocketMax  Decimal? @db.Decimal(10, 2) @map("out_of_pocket_max")
+  outOfPocketMet  Decimal? @db.Decimal(10, 2) @map("out_of_pocket_met")
+  // Authorization
+  authRequired    Boolean  @default(false) @map("auth_required")
+  authPhoneNumber String?  @map("auth_phone_number")
+  notes           String?
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
   patient         Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
   insurancePlan   InsurancePlan? @relation(fields: [insurancePlanId], references: [id])
+  verifiedBy      User?    @relation("InsuranceVerifier", fields: [eligibilityVerifiedById], references: [id])
 
+  @@index([patientId])
   @@map("patient_insurances")
 }
 
