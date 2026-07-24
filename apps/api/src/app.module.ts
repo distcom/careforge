@@ -45,6 +45,7 @@ import { QualityReportingModule } from './modules/quality-reporting/quality-repo
 import { DataMigrationModule } from './modules/data-migration/data-migration.module';
 import { Hl7v2Module } from './modules/hl7v2/hl7v2.module';
 import { X12EdiModule } from './modules/x12-edi/x12-edi.module';
+import { CCdaModule } from './modules/c-cda/c-cda.module';
 
 @Module({
   imports: [
@@ -105,6 +106,7 @@ import { X12EdiModule } from './modules/x12-edi/x12-edi.module';
     DataMigrationModule,
     Hl7v2Module,
     X12EdiModule,
+    CCdaModule,
   ],
   providers: [
     // SECURITY: Deny-by-default — all routes require JWT unless @Public()
