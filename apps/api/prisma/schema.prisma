@@ -52,6 +52,8 @@ model User {
   // Clinical note relations
   authoredNotes ClinicalNote[] @relation("NoteAuthor")
   attestedNotes ClinicalNote[] @relation("NoteAttester")
+  // Referral relations
+  referrals     Referral[]     @relation("ReferringProvider")
 
   @@map("users")
 }
@@ -911,19 +913,38 @@ model Referral {
   referringProviderId String? @map("referring_provider_id")
   referredToName   String    @map("referred_to_name")
   referredToSpecialty String? @map("referred_to_specialty")
+  referredToNpi    String?   @map("referred_to_npi")
   reason           String
   urgency          String    @default("ROUTINE")
   status           String    @default("PENDING")
   clinicalInfo     String?   @map("clinical_info")
+  diagnosisCodes   String?   @map("diagnosis_codes")
+  requestedServices String?  @map("requested_services")
   referredAt       DateTime  @default(now()) @map("referred_at")
   completedAt      DateTime? @map("completed_at")
+  cancelledAt      DateTime? @map("cancelled_at")
+  cancelReason     String?   @map("cancel_reason")
+  expiresAt        DateTime? @map("expires_at")
+  // Authorization tracking
+  authRequired     Boolean   @default(false) @map("auth_required")
+  authNumber       String?   @map("auth_number")
+  authStatus       String?   @map("auth_status") // PENDING, APPROVED, DENIED, EXPIRED
+  authRequestedAt  DateTime? @map("auth_requested_at")
+  authDecidedAt    DateTime? @map("auth_decided_at")
+  authDenialReason String?   @map("auth_denial_reason")
+  authValidUntil   DateTime? @map("auth_valid_until")
+  authVisitsAuthorized Int?  @map("auth_visits_authorized")
+  authVisitsUsed   Int       @default(0) @map("auth_visits_used")
   notes            String?
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
 
   patient          Patient   @relation(fields: [patientId], references: [id])
+  referringProvider User?    @relation("ReferringProvider", fields: [referringProviderId], references: [id])
 
   @@index([patientId])
+  @@index([status])
+  @@index([authStatus])
   @@map("referrals")
 }
 
