@@ -44,6 +44,7 @@ import { ClinicalDecisionSupportModule } from './modules/clinical-decision-suppo
 import { QualityReportingModule } from './modules/quality-reporting/quality-reporting.module';
 import { DataMigrationModule } from './modules/data-migration/data-migration.module';
 import { Hl7v2Module } from './modules/hl7v2/hl7v2.module';
+import { X12EdiModule } from './modules/x12-edi/x12-edi.module';
 
 @Module({
   imports: [
@@ -103,6 +104,7 @@ import { Hl7v2Module } from './modules/hl7v2/hl7v2.module';
     QualityReportingModule,
     DataMigrationModule,
     Hl7v2Module,
+    X12EdiModule,
   ],
   providers: [
     // SECURITY: Deny-by-default — all routes require JWT unless @Public()
