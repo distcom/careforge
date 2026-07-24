@@ -1,5 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../infrastructure/database/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import { PaginationQuery, PaginatedResult } from '../../common/dto/pagination.dto';
 
 export interface CreateVitalsDto {
@@ -23,7 +24,12 @@ export interface CreateVitalsDto {
 
 @Injectable()
 export class VitalsService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(VitalsService.name);
+
+  constructor(
+    private prisma: PrismaService,
+    private auditService: AuditService,
+  ) {}
 
   async findAll(patientId: string, query: PaginationQuery): Promise<PaginatedResult<any>> {
     const where = { patientId };
@@ -49,7 +55,7 @@ export class VitalsService {
       bmi = Math.round((dto.weight / (heightM * heightM)) * 10) / 10;
     }
 
-    return this.prisma.vitalSign.create({
+    const vitals = await this.prisma.vitalSign.create({
       data: {
         patientId: dto.patientId,
         encounterId: dto.encounterId,
@@ -70,6 +76,45 @@ export class VitalsService {
         recordedById: dto.recordedById,
       },
     });
+
+    await this.auditService.log({
+      action: 'VITALS_RECORDED',
+      entityType: 'VitalSign',
+      entityId: vitals.id,
+      userId: dto.recordedById,
+      details: {
+        patientId: dto.patientId,
+        encounterId: dto.encounterId,
+        hasBP: !!(dto.systolic && dto.diastolic),
+        hasTemp: !!dto.temperature,
+        hasWeight: !!dto.weight,
+      },
+    });
+
+    // Log abnormal vitals
+    if (this.isAbnormalVitals(dto)) {
+      this.logger.warn(`Abnormal vitals recorded for patient ${dto.patientId}`);
+      await this.auditService.log({
+        action: 'ABNORMAL_VITALS_RECORDED',
+        entityType: 'VitalSign',
+        entityId: vitals.id,
+        userId: dto.recordedById,
+        details: { patientId: dto.patientId },
+      });
+    }
+
+    return vitals;
+  }
+
+  private isAbnormalVitals(dto: CreateVitalsDto): boolean {
+    // Basic abnormal vital detection
+    if (dto.systolic && (dto.systolic > 180 || dto.systolic < 90)) return true;
+    if (dto.diastolic && (dto.diastolic > 120 || dto.diastolic < 60)) return true;
+    if (dto.heartRate && (dto.heartRate > 120 || dto.heartRate < 50)) return true;
+    if (dto.temperature && (dto.temperature > 103 || dto.temperature < 95)) return true;
+    if (dto.oxygenSat && dto.oxygenSat < 90) return true;
+    if (dto.respiratoryRate && (dto.respiratoryRate > 30 || dto.respiratoryRate < 8)) return true;
+    return false;
   }
 
   async getLatest(patientId: string) {
@@ -95,8 +140,20 @@ export class VitalsService {
     return records.reverse();
   }
 
-  async remove(id: string) {
+  async remove(id: string, userId?: string) {
+    const vitals = await this.prisma.vitalSign.findUnique({ where: { id } });
+    if (!vitals) throw new NotFoundException('Vital sign record not found');
+
     await this.prisma.vitalSign.delete({ where: { id } });
+
+    await this.auditService.log({
+      action: 'VITALS_DELETED',
+      entityType: 'VitalSign',
+      entityId: id,
+      userId,
+      details: { patientId: vitals.patientId },
+    });
+
     return { message: 'Vital sign record deleted' };
   }
 }
