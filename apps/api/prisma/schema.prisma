@@ -54,6 +54,10 @@ model User {
   attestedNotes ClinicalNote[] @relation("NoteAttester")
   // Referral relations
   referrals     Referral[]     @relation("ReferringProvider")
+  // Care plan relations
+  createdCarePlans CarePlan[]  @relation("CarePlanCreator")
+  assignedInterventions CarePlanIntervention[] @relation("InterventionAssignee")
+  carePlanTeams CarePlanTeamMember[] @relation("CarePlanTeam")
 
   @@map("users")
 }
@@ -871,9 +875,11 @@ model CarePlan {
   patientId   String    @map("patient_id")
   title       String
   description String?
-  status      String    @default("ACTIVE")
+  planType    String?   @map("plan_type") // e.g., DIABETES, HYPERTENSION, POST_SURGICAL
+  status      String    @default("ACTIVE") // ACTIVE, COMPLETED, CANCELLED, ON_HOLD
   startDate   DateTime? @map("start_date")
   endDate     DateTime? @map("end_date")
+  reviewDate  DateTime? @map("review_date")
   createdById String?   @map("created_by_id")
   notes       String?
   createdAt   DateTime  @default(now()) @map("created_at")
@@ -881,9 +887,13 @@ model CarePlan {
   deletedAt   DateTime? @map("deleted_at")
 
   patient     Patient   @relation(fields: [patientId], references: [id])
+  createdBy   User?     @relation("CarePlanCreator", fields: [createdById], references: [id])
   goals       CarePlanGoal[]
+  interventions CarePlanIntervention[]
+  teamMembers CarePlanTeamMember[]
 
   @@index([patientId])
+  @@index([status])
   @@map("care_plans")
 }
 
@@ -892,15 +902,55 @@ model CarePlanGoal {
   carePlanId  String    @map("care_plan_id")
   title       String
   description String?
-  status      String    @default("IN_PROGRESS")
+  status      String    @default("IN_PROGRESS") // IN_PROGRESS, ACHIEVED, ABANDONED
+  priority    String    @default("MEDIUM") // HIGH, MEDIUM, LOW
   targetDate  DateTime? @map("target_date")
   achievedAt  DateTime? @map("achieved_at")
+  progressNotes String? @map("progress_notes")
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
   carePlan    CarePlan  @relation(fields: [carePlanId], references: [id], onDelete: Cascade)
 
+  @@index([carePlanId])
   @@map("care_plan_goals")
+}
+
+model CarePlanIntervention {
+  id          String    @id @default(uuid())
+  carePlanId  String    @map("care_plan_id")
+  title       String
+  description String?
+  interventionType String? @map("intervention_type") // MEDICATION, THERAPY, EDUCATION, MONITORING, PROCEDURE
+  frequency   String?   // e.g., "Daily", "Weekly", "As needed"
+  status      String    @default("ACTIVE") // ACTIVE, COMPLETED, DISCONTINUED
+  startDate   DateTime? @map("start_date")
+  endDate     DateTime? @map("end_date")
+  assignedToId String?  @map("assigned_to_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  carePlan    CarePlan  @relation(fields: [carePlanId], references: [id], onDelete: Cascade)
+  assignedTo  User?     @relation("InterventionAssignee", fields: [assignedToId], references: [id])
+
+  @@index([carePlanId])
+  @@map("care_plan_interventions")
+}
+
+model CarePlanTeamMember {
+  id          String    @id @default(uuid())
+  carePlanId  String    @map("care_plan_id")
+  userId      String?   @map("user_id")
+  name        String?   // For external providers
+  role        String    // e.g., PCP, SPECIALIST, NURSE, THERAPIST, CAREGIVER
+  responsibilities String?
+  addedAt     DateTime  @default(now()) @map("added_at")
+
+  carePlan    CarePlan  @relation(fields: [carePlanId], references: [id], onDelete: Cascade)
+  user        User?     @relation("CarePlanTeam", fields: [userId], references: [id])
+
+  @@index([carePlanId])
+  @@map("care_plan_team_members")
 }
 
 // ============================================
