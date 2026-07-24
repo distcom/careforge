@@ -39,6 +39,8 @@ import { AuditModule } from './modules/audit/audit.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { TelehealthModule } from './modules/telehealth/telehealth.module';
 import { FhirModule } from './modules/fhir/fhir.module';
+import { ConsentModule } from './modules/consent/consent.module';
+import { ClinicalDecisionSupportModule } from './modules/clinical-decision-support/clinical-decision-support.module';
 
 @Module({
   imports: [
@@ -93,6 +95,8 @@ import { FhirModule } from './modules/fhir/fhir.module';
     AdminModule,
     TelehealthModule,
     FhirModule,
+    ConsentModule,
+    ClinicalDecisionSupportModule,
   ],
   providers: [
     // SECURITY: Deny-by-default — all routes require JWT unless @Public()
