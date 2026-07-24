@@ -1,6 +1,7 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../infrastructure/database/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DOMAIN_EVENTS } from '../../common/events/domain-events';
 import { v4 as uuidv4 } from 'uuid';
@@ -42,8 +43,11 @@ export interface SessionParticipant {
  */
 @Injectable()
 export class TelehealthSessionService {
+  private readonly logger = new Logger(TelehealthSessionService.name);
+
   constructor(
     private readonly prisma: PrismaService,
+    private readonly auditService: AuditService,
     private readonly eventEmitter: EventEmitter2,
     private readonly configService: ConfigService,
   ) {}
@@ -92,6 +96,14 @@ export class TelehealthSessionService {
       providerId: config.providerId,
       roomCode,
       scheduledAt: session.scheduledAt,
+    });
+
+    await this.auditService.log({
+      action: 'TELEHEALTH_SESSION_CREATED',
+      entityType: 'TelehealthSession',
+      entityId: session.id,
+      userId: config.providerId,
+      details: { patientId: config.patientId, roomCode },
     });
 
     return {
@@ -220,6 +232,14 @@ export class TelehealthSessionService {
         providerId: session.providerId,
         duration,
         roomCode,
+      });
+
+      await this.auditService.log({
+        action: 'TELEHEALTH_SESSION_ENDED',
+        entityType: 'TelehealthSession',
+        entityId: session.id,
+        userId,
+        details: { patientId: session.patientId, duration, roomCode },
       });
 
       return { ended: true, duration };
