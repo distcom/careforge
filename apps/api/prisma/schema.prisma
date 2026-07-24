@@ -72,6 +72,7 @@ model User {
   revokedConsents Consent[] @relation("ConsentRevoker")
   createdRestrictions PrivacyRestriction[] @relation("RestrictionCreator")
   accessOverrides AccessOverride[]
+  acknowledgedAlerts ClinicalAlert[] @relation("AlertAcknowledger")
 
   @@map("users")
 }
@@ -253,6 +254,8 @@ model Patient {
   consentRecords      Consent[]
   privacyRestrictions PrivacyRestriction[]
   accessOverrides     AccessOverride[]
+  clinicalAlerts      ClinicalAlert[]
+  careGaps            CareGap[]
 
   @@index([lastName, firstName])
   @@index([dateOfBirth])
@@ -1515,4 +1518,57 @@ model AccessOverride {
   @@index([patientId])
   @@index([userId])
   @@map("access_overrides")
+}
+
+// ============================================
+// CLINICAL DECISION SUPPORT
+// ============================================
+
+model ClinicalAlert {
+  id              String    @id @default(uuid())
+  patientId       String    @map("patient_id")
+  alertType       String    @map("alert_type") // DRUG_INTERACTION, ALLERGY_WARNING, DUPLICATE_ORDER, CRITICAL_VALUE, PREVENTIVE_DUE, CARE_GAP
+  severity        String    @default("INFO") // INFO, WARNING, CRITICAL
+  title           String
+  message         String
+  // Context
+  relatedEntityId String?   @map("related_entity_id")
+  relatedEntityType String? @map("related_entity_type")
+  // Status
+  status          String    @default("ACTIVE") // ACTIVE, ACKNOWLEDGED, DISMISSED, RESOLVED
+  acknowledgedById String?  @map("acknowledged_by_id")
+  acknowledgedAt  DateTime? @map("acknowledged_at")
+  dismissedReason String?   @map("dismissed_reason")
+  // Metadata
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  patient         Patient   @relation(fields: [patientId], references: [id])
+  acknowledgedBy  User?     @relation("AlertAcknowledger", fields: [acknowledgedById], references: [id])
+
+  @@index([patientId])
+  @@index([alertType])
+  @@index([status])
+  @@map("clinical_alerts")
+}
+
+model CareGap {
+  id              String    @id @default(uuid())
+  patientId       String    @map("patient_id")
+  gapType         String    @map("gap_type") // SCREENING_DUE, IMMUNIZATION_DUE, FOLLOW_UP_DUE, LAB_DUE, MEDICATION_REVIEW
+  measure         String    // e.g., "Annual Diabetes Screening", "Flu Vaccination"
+  dueDate         DateTime? @map("due_date")
+  status          String    @default("OPEN") // OPEN, CLOSED, OVERRIDDEN
+  closedAt        DateTime? @map("closed_at")
+  closedReason    String?   @map("closed_reason")
+  notes           String?
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  patient         Patient   @relation(fields: [patientId], references: [id])
+
+  @@index([patientId])
+  @@index([gapType])
+  @@index([status])
+  @@map("care_gaps")
 }
