@@ -3,7 +3,18 @@ import {
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { MedicationService, CreateMedicationDto, CreatePrescriptionDto } from './medication.service';
+import {
+  MedicationService,
+  CreateMedicationDto,
+  CreatePrescriptionDto,
+  SignPrescriptionDto,
+  TransmitPrescriptionDto,
+  CancelPrescriptionDto,
+  RenewPrescriptionDto,
+  RecordFillDto,
+  PdmpCheckDto,
+  FormularyCheckDto,
+} from './medication.service';
 import { DrugInteractionService } from './drug-interaction.service';
 import { EprescribingService } from './eprescribing.service';
 import { RequirePermissions } from '../../common/decorators/auth.decorator';
@@ -59,7 +70,7 @@ export class MedicationController {
   @Get('prescriptions')
   @ApiOperation({ summary: 'List patient prescriptions' })
   @RequirePermissions('clinical:read')
-  findPrescriptions(@Param('patientId') patientId: string, @Query() query: PaginationQuery) {
+  findPrescriptions(@Param('patientId') patientId: string, @Query() query: PaginationQuery & { status?: string }) {
     return this.medicationService.findPrescriptions(patientId, query);
   }
 
@@ -71,14 +82,98 @@ export class MedicationController {
     @Body() dto: CreatePrescriptionDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.medicationService.createPrescription({ ...dto, patientId, providerId: user.id });
+    return this.medicationService.createPrescription({ ...dto, patientId, providerId: user.id }, user.id);
+  }
+
+  @Post('prescriptions/:id/sign')
+  @ApiOperation({ summary: 'Sign prescription' })
+  @RequirePermissions('clinical:write')
+  signPrescription(
+    @Param('id') id: string,
+    @Body() dto: SignPrescriptionDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.medicationService.signPrescription(id, dto, user.id);
   }
 
   @Post('prescriptions/:id/transmit')
   @ApiOperation({ summary: 'Transmit prescription to pharmacy' })
   @RequirePermissions('clinical:write')
-  transmitPrescription(@Param('id') id: string) {
-    return this.medicationService.transmitPrescription(id);
+  transmitPrescription(
+    @Param('id') id: string,
+    @Body() dto: TransmitPrescriptionDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.medicationService.transmitPrescription(id, dto, user.id);
+  }
+
+  @Post('prescriptions/:id/cancel')
+  @ApiOperation({ summary: 'Cancel prescription' })
+  @RequirePermissions('clinical:write')
+  cancelPrescription(
+    @Param('id') id: string,
+    @Body() dto: CancelPrescriptionDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.medicationService.cancelPrescription(id, dto, user.id);
+  }
+
+  @Post('prescriptions/:id/renew')
+  @ApiOperation({ summary: 'Renew prescription' })
+  @RequirePermissions('clinical:write')
+  renewPrescription(
+    @Param('id') id: string,
+    @Body() dto: RenewPrescriptionDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.medicationService.renewPrescription(id, dto, user.id);
+  }
+
+  @Post('prescriptions/:id/fill')
+  @ApiOperation({ summary: 'Record prescription fill' })
+  @RequirePermissions('clinical:write')
+  recordFill(
+    @Param('id') id: string,
+    @Body() dto: RecordFillDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.medicationService.recordFill(id, dto, user.id);
+  }
+
+  @Post('prescriptions/:id/complete')
+  @ApiOperation({ summary: 'Complete prescription' })
+  @RequirePermissions('clinical:write')
+  completePrescription(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.medicationService.completePrescription(id, user.id);
+  }
+
+  @Post('prescriptions/:id/pdmp-check')
+  @ApiOperation({ summary: 'Record PDMP check' })
+  @RequirePermissions('clinical:write')
+  checkPdmp(
+    @Param('id') id: string,
+    @Body() dto: PdmpCheckDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.medicationService.checkPdmp(id, dto, user.id);
+  }
+
+  @Post('prescriptions/:id/formulary-check')
+  @ApiOperation({ summary: 'Record formulary check' })
+  @RequirePermissions('clinical:write')
+  checkFormulary(
+    @Param('id') id: string,
+    @Body() dto: FormularyCheckDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.medicationService.checkFormulary(id, dto, user.id);
+  }
+
+  @Get('prescriptions/controlled-substances')
+  @ApiOperation({ summary: 'Get controlled substance prescriptions' })
+  @RequirePermissions('clinical:read')
+  getControlledSubstances(@Param('patientId') patientId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.medicationService.getControlledSubstancePrescriptions(patientId, user.id);
   }
 
   @Post('drug-interaction-check')

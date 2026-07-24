@@ -73,6 +73,7 @@ model User {
   createdRestrictions PrivacyRestriction[] @relation("RestrictionCreator")
   accessOverrides AccessOverride[]
   acknowledgedAlerts ClinicalAlert[] @relation("AlertAcknowledger")
+  signedPrescriptions Prescription[] @relation("SignedPrescriptions")
 
   @@map("users")
 }
@@ -696,34 +697,73 @@ model Medication {
 }
 
 model Prescription {
-  id             String    @id @default(uuid())
-  patientId      String    @map("patient_id")
-  providerId     String    @map("provider_id")
-  medicationName String    @map("medication_name")
-  rxnormCode     String?   @map("rxnorm_code")
-  ndcCode        String?   @map("ndc_code")
-  dosage         String
-  frequency      String
-  route          String?
-  duration       String?
-  quantity       String?
-  refills        Int       @default(0)
-  refillsUsed    Int       @default(0) @map("refills_used")
-  instructions   String?
-  deaSchedule    String?   @map("dea_schedule")
-  status         String    @default("ACTIVE")
-  pharmacyName   String?   @map("pharmacy_name")
-  pharmacyPhone  String?   @map("pharmacy_phone")
-  prescribedAt   DateTime  @default(now()) @map("prescribed_at")
-  expiresAt      DateTime? @map("expires_at")
-  notes          String?
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @updatedAt @map("updated_at")
+  id                String    @id @default(uuid())
+  patientId         String    @map("patient_id")
+  providerId        String    @map("provider_id")
+  medicationName    String    @map("medication_name")
+  rxnormCode        String?   @map("rxnorm_code")
+  ndcCode           String?   @map("ndc_code")
+  dosage            String
+  frequency         String
+  route             String?
+  duration          String?
+  quantity          String?
+  refills           Int       @default(0)
+  refillsUsed       Int       @default(0) @map("refills_used")
+  instructions      String?
+  deaSchedule       String?   @map("dea_schedule")
+  status            String    @default("DRAFT")
+  // Pharmacy details
+  pharmacyName      String?   @map("pharmacy_name")
+  pharmacyPhone     String?   @map("pharmacy_phone")
+  pharmacyNcpdpId   String?   @map("pharmacy_ncpdp_id")
+  pharmacyNpi       String?   @map("pharmacy_npi")
+  pharmacyAddress   String?   @map("pharmacy_address")
+  // E-prescribing tracking
+  transmissionMethod String?  @map("transmission_method")
+  transmittedAt     DateTime? @map("transmitted_at")
+  ncpdpMessageId    String?   @map("ncpdp_message_id")
+  ncpdpStatus       String?   @map("ncpdp_status")
+  ncpdpRejectReason String?   @map("ncpdp_reject_reason")
+  // Signing
+  signedById        String?   @map("signed_by_id")
+  signedAt          DateTime? @map("signed_at")
+  electronicSignature String? @map("electronic_signature")
+  // PDMP check
+  pdmpChecked       Boolean   @default(false) @map("pdmp_checked")
+  pdmpCheckedAt     DateTime? @map("pdmp_checked_at")
+  pdmpCheckedById   String?   @map("pdmp_checked_by_id")
+  pdmpFindings      String?   @map("pdmp_findings")
+  // Formulary
+  formularyChecked  Boolean   @default(false) @map("formulary_checked")
+  formularyStatus   String?   @map("formulary_status")
+  formularyNotes    String?   @map("formulary_notes")
+  // Renewal tracking
+  renewalOfId       String?   @map("renewal_of_id")
+  renewalCount      Int       @default(0) @map("renewal_count")
+  // Cancellation
+  cancelledAt       DateTime? @map("cancelled_at")
+  cancelledById     String?   @map("cancelled_by_id")
+  cancelReason      String?   @map("cancel_reason")
+  // Fill tracking
+  filledAt          DateTime? @map("filled_at")
+  filledPharmacy    String?   @map("filled_pharmacy")
+  dispensedQuantity String?   @map("dispensed_quantity")
+  // Dates
+  prescribedAt      DateTime  @default(now()) @map("prescribed_at")
+  expiresAt         DateTime? @map("expires_at")
+  notes             String?
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
 
-  patient        Patient   @relation(fields: [patientId], references: [id])
-  provider       User      @relation(fields: [providerId], references: [id])
+  patient           Patient   @relation(fields: [patientId], references: [id])
+  provider          User      @relation(fields: [providerId], references: [id])
+  signedBy          User?     @relation("SignedPrescriptions", fields: [signedById], references: [id])
+  renewalOf         Prescription?  @relation("PrescriptionRenewals", fields: [renewalOfId], references: [id])
+  renewals          Prescription[] @relation("PrescriptionRenewals")
 
   @@index([patientId])
+  @@index([status])
   @@map("prescriptions")
 }
 
