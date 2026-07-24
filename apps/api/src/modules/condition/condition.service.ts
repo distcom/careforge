@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../infrastructure/database/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import { PaginationQuery, PaginatedResult } from '../../common/dto/pagination.dto';
 
 export interface CreateConditionDto {
@@ -28,7 +29,10 @@ export interface UpdateConditionDto {
 
 @Injectable()
 export class ConditionService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private auditService: AuditService,
+  ) {}
 
   async findAll(patientId: string, query: PaginationQuery & { status?: string }): Promise<PaginatedResult<any>> {
     const where: any = { patientId, deletedAt: null };
@@ -47,8 +51,8 @@ export class ConditionService {
     return new PaginatedResult(conditions, total, query.page, query.limit);
   }
 
-  async create(dto: CreateConditionDto) {
-    return this.prisma.condition.create({
+  async create(dto: CreateConditionDto, userId?: string) {
+    const condition = await this.prisma.condition.create({
       data: {
         patientId: dto.patientId,
         icd10Code: dto.icd10Code,
@@ -62,9 +66,19 @@ export class ConditionService {
         notes: dto.notes,
       },
     });
+
+    await this.auditService.log({
+      action: 'CONDITION_ADDED',
+      entityType: 'Condition',
+      entityId: condition.id,
+      userId,
+      details: { patientId: dto.patientId, name: dto.name, icd10Code: dto.icd10Code },
+    });
+
+    return condition;
   }
 
-  async update(id: string, dto: UpdateConditionDto) {
+  async update(id: string, dto: UpdateConditionDto, userId?: string) {
     const condition = await this.prisma.condition.findFirst({ where: { id, deletedAt: null } });
     if (!condition) throw new NotFoundException('Condition not found');
 
@@ -72,18 +86,53 @@ export class ConditionService {
     if (dto.onsetDate) data.onsetDate = new Date(dto.onsetDate);
     if (dto.resolvedDate) data.resolvedDate = new Date(dto.resolvedDate);
 
-    return this.prisma.condition.update({ where: { id }, data });
+    const updated = await this.prisma.condition.update({ where: { id }, data });
+
+    await this.auditService.log({
+      action: 'CONDITION_UPDATED',
+      entityType: 'Condition',
+      entityId: id,
+      userId,
+      details: { patientId: condition.patientId },
+    });
+
+    return updated;
   }
 
-  async resolve(id: string) {
-    return this.prisma.condition.update({
+  async resolve(id: string, userId?: string) {
+    const condition = await this.prisma.condition.findFirst({ where: { id, deletedAt: null } });
+    if (!condition) throw new NotFoundException('Condition not found');
+
+    const updated = await this.prisma.condition.update({
       where: { id },
       data: { status: 'RESOLVED', resolvedDate: new Date() },
     });
+
+    await this.auditService.log({
+      action: 'CONDITION_RESOLVED',
+      entityType: 'Condition',
+      entityId: id,
+      userId,
+      details: { patientId: condition.patientId, name: condition.name },
+    });
+
+    return updated;
   }
 
-  async remove(id: string) {
+  async remove(id: string, userId?: string) {
+    const condition = await this.prisma.condition.findFirst({ where: { id, deletedAt: null } });
+    if (!condition) throw new NotFoundException('Condition not found');
+
     await this.prisma.condition.update({ where: { id }, data: { deletedAt: new Date() } });
+
+    await this.auditService.log({
+      action: 'CONDITION_REMOVED',
+      entityType: 'Condition',
+      entityId: id,
+      userId,
+      details: { patientId: condition.patientId, name: condition.name },
+    });
+
     return { message: 'Condition removed' };
   }
 }

@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../infrastructure/database/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import { PaginationQuery, PaginatedResult } from '../../common/dto/pagination.dto';
 
 export interface CreateAllergyDto {
@@ -15,7 +16,10 @@ export interface CreateAllergyDto {
 
 @Injectable()
 export class AllergyService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private auditService: AuditService,
+  ) {}
 
   async findAll(patientId: string, query: PaginationQuery): Promise<PaginatedResult<any>> {
     const where = { patientId, deletedAt: null };
@@ -26,8 +30,8 @@ export class AllergyService {
     return new PaginatedResult(allergies, total, query.page, query.limit);
   }
 
-  async create(dto: CreateAllergyDto) {
-    return this.prisma.allergy.create({
+  async create(dto: CreateAllergyDto, userId?: string) {
+    const allergy = await this.prisma.allergy.create({
       data: {
         patientId: dto.patientId,
         allergen: dto.allergen,
@@ -39,18 +43,52 @@ export class AllergyService {
         notes: dto.notes,
       },
     });
+
+    await this.auditService.log({
+      action: 'ALLERGY_ADDED',
+      entityType: 'Allergy',
+      entityId: allergy.id,
+      userId,
+      details: { patientId: dto.patientId, allergen: dto.allergen, severity: dto.severity },
+    });
+
+    return allergy;
   }
 
-  async update(id: string, dto: Partial<CreateAllergyDto> & { status?: string; resolvedDate?: string }) {
+  async update(id: string, dto: Partial<CreateAllergyDto> & { status?: string; resolvedDate?: string }, userId?: string) {
     const allergy = await this.prisma.allergy.findFirst({ where: { id, deletedAt: null } });
     if (!allergy) throw new NotFoundException('Allergy not found');
+
     const data: any = { ...dto };
     if (dto.resolvedDate) data.resolvedDate = new Date(dto.resolvedDate);
-    return this.prisma.allergy.update({ where: { id }, data });
+
+    const updated = await this.prisma.allergy.update({ where: { id }, data });
+
+    await this.auditService.log({
+      action: 'ALLERGY_UPDATED',
+      entityType: 'Allergy',
+      entityId: id,
+      userId,
+      details: { patientId: allergy.patientId, allergen: allergy.allergen },
+    });
+
+    return updated;
   }
 
-  async remove(id: string) {
+  async remove(id: string, userId?: string) {
+    const allergy = await this.prisma.allergy.findFirst({ where: { id, deletedAt: null } });
+    if (!allergy) throw new NotFoundException('Allergy not found');
+
     await this.prisma.allergy.update({ where: { id }, data: { deletedAt: new Date() } });
+
+    await this.auditService.log({
+      action: 'ALLERGY_REMOVED',
+      entityType: 'Allergy',
+      entityId: id,
+      userId,
+      details: { patientId: allergy.patientId, allergen: allergy.allergen },
+    });
+
     return { message: 'Allergy removed' };
   }
 }
