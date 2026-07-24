@@ -1,10 +1,16 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../infrastructure/database/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import { PaginationQuery, PaginatedResult } from '../../common/dto/pagination.dto';
 
 @Injectable()
 export class MessagingService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(MessagingService.name);
+
+  constructor(
+    private prisma: PrismaService,
+    private auditService: AuditService,
+  ) {}
 
   async getThreads(userId: string, query: PaginationQuery): Promise<PaginatedResult<any>> {
     const where = {
@@ -52,11 +58,20 @@ export class MessagingService {
       data: { isRead: true, readAt: new Date() },
     });
 
+    // Audit message access
+    await this.auditService.log({
+      action: 'MESSAGES_ACCESSED',
+      entityType: 'MessageThread',
+      entityId: threadId,
+      userId,
+      details: { messageCount: messages.length },
+    });
+
     return new PaginatedResult(messages, total, query.page, query.limit);
   }
 
   async createThread(userId: string, dto: { subject: string; participantIds: string[]; patientId?: string }) {
-    return this.prisma.messageThread.create({
+    const thread = await this.prisma.messageThread.create({
       data: {
         subject: dto.subject,
         patientId: dto.patientId,
@@ -66,6 +81,16 @@ export class MessagingService {
       },
       include: { participants: true },
     });
+
+    await this.auditService.log({
+      action: 'MESSAGE_THREAD_CREATED',
+      entityType: 'MessageThread',
+      entityId: thread.id,
+      userId,
+      details: { subject: dto.subject, participantCount: dto.participantIds.length + 1 },
+    });
+
+    return thread;
   }
 
   async sendMessage(threadId: string, senderId: string, dto: { body: string; priority?: string }) {
@@ -82,6 +107,14 @@ export class MessagingService {
     await this.prisma.messageThread.update({
       where: { id: threadId },
       data: { updatedAt: new Date() },
+    });
+
+    await this.auditService.log({
+      action: 'MESSAGE_SENT',
+      entityType: 'Message',
+      entityId: message.id,
+      userId: senderId,
+      details: { threadId, priority: dto.priority },
     });
 
     return message;
